@@ -23,10 +23,6 @@
 #define WHITE    0xFFFF
 #define GREY     0xC618
 
-//  #define TFT_CS         0   // was 4
-//  #define TFT_RST        2   // was 16                                          
-//  #define TFT_DC         4   // was 5
-
 #define cs   0  
 #define dc   4   
 #define rst  2 
@@ -35,9 +31,10 @@ const char* ssid     = "Buschfunk";      // SSID of local network
 const char* password = "FritzBoxIstTotalSuper";   // Password on network
 String APIKEY = "fb1d7728528b56504cb6af0aba6c6fbc";
 String CityID = "2885397"; //Sparta, Greece
-//int TimeZone = 1; //GMT +2
-  Timezone myTZ;
+Timezone myTZ;
 
+const int displaywidth = 80;
+const int displayheight = 160;
 
 WiFiClient client;
 char servername[]="api.openweathermap.org";  // remote server we will connect to
@@ -56,7 +53,10 @@ Adafruit_ST7735 tft = Adafruit_ST7735(cs, dc, rst);
 
 void setup() {
   Serial.begin(115200);
-  tft.initR(INITR_MINI160x80);   // initialize a ST7735S chip, black tab
+  tft.initR(INITR_GREENTAB);
+  tft.setRotation(ST7735_MADCTL_BGR);
+  tft.invertDisplay(true);
+
   tft.fillScreen(BLACK);
 
   Serial.println("Connecting");
@@ -65,7 +65,7 @@ void setup() {
   tft.setCursor(10,80);
   tft.setTextColor(WHITE);
   tft.setTextSize(1);
-  tft.print("Connecting...");
+  drawCentreChar("Connecting...", tft.width()/2, tft.height()/2);
 
   Serial.print("display width: ");
   Serial.println(tft.width());
@@ -111,42 +111,9 @@ void getWeatherData() //client function to send/receive GET request data.
 
   //char result[]="{\"cod\":\"200\",\"message\":0,\"cnt\":1,\"list\":[{\"dt\":1586034000,\"main\":{\"temp\":37.1,\"feels_like\":2.87,\"temp_min\":7.1,\"temp_max\":7.71,\"pressure\":1025,\"sea_level\":1025,\"grnd_level\":1019,\"humidity\":61,\"temp_kf\":-0.61},\"weather\":[{\"id\":800,\"main\":\"Clear\",\"description\":\"clear sky\",\"icon\":\"01n\"}],\"clouds\":{\"all\":0},\"wind\":{\"speed\":3.23,\"deg\":126},\"sys\":{\"pod\":\"n\"},\"dt_txt\":\"2020-04-04 21:00:00\"}],\"city\":{\"id\":2885397,\"name\":\"Korschenbroich\",\"coord\":{\"lat\":51.1914,\"lon\":6.5135},\"country\":\"DE\",\"timezone\":7200,\"sunrise\":1585976515,\"sunset\":1586023881}}";
 
-// http://api.openweathermap.org/data/2.5/forecast?id=2885397&units=metric&cnt=1&APPID=fb1d7728528b56504cb6af0aba6c6fbc
-
-  // char result[700]=" ";
-  // char *ch;
-
-  // Serial.println("Getting Weather Data");
-  // if (client.connect(servername, 80)) {  //starts client connection, checks for connection
-  //   client.println("GET /data/2.5/forecast?id="+CityID+"&units=metric&cnt=1&APPID="+APIKEY);
-  //   client.println("Host: api.openweathermap.org");
-  //   client.println("User-Agent: ArduinoWiFi/1.1");
-  //   client.println("Connection: close");
-  //   client.println();
-  // } 
-  // else {
-  //   Serial.println("connection failed"); //error message if no client connect
-  //   Serial.println();
-  // }
-
-  // while(client.connected() && !client.available()) delay(1); //waits for data
- 
-  //   Serial.println("Waiting for data");
-
-  // while (client.connected() || client.available()) { //connected or data available
-  //   char c = client.read(); //gets byte from ethernet buffer
-  //   ch = c;
-  //   //strcpy(ch, c);
-  //   strcat (result, ch);
-  //     //result = result+c;
-  //   }
-
-  // client.stop(); //stop client
-
   StaticJsonDocument<1024> root;
 
-// Deserialize the JSON document
-//  DeserializationError error = deserializeJson(root, result);
+  // Deserialize the JSON document
   DeserializationError error = deserializeJson(root, http.getStream());
   // Test if parsing succeeds.
   if (error) {
@@ -195,26 +162,63 @@ void getWeatherData() //client function to send/receive GET request data.
 
 void printData(String timeString, char* tempstr, int weatherID)
 {
-  tft.setCursor(10,20);
+  // tft.setCursor(10,20);
   tft.setTextColor(WHITE);
   tft.setTextSize(2);
-  tft.print(timeString);
+  drawCentreString(timeString, tft.width()/2, 20);
+  //tft.print(timeString);
 
   printWeatherIcon(weatherID);
 
-  tft.setCursor(10,132);
-  tft.setTextColor(WHITE);
-  tft.setTextSize(2);
-  tft.print(tempstr);
+  // tft.setCursor(10,132);
+  // tft.setTextColor(WHITE);
+  // tft.setTextSize(2);
+  
+  char degC[3] = "oC";
+  
+  char all[5] = "";
+  strcat(all, tempstr);
+  strcat(all, degC);
+  Serial.println(tempstr);
+  Serial.println(all);
+  drawCentreChar(all, tft.width()/2, 132);
+  // drawCentreChar(tempstr, tft.width()/2, 132);
+  //tft.print(tempstr);
 
-  tft.setCursor(55,130);
-  tft.setTextColor(WHITE);
-  tft.setTextSize(1);
-  tft.print("o");
-  tft.setCursor(60,132);
-  tft.setTextColor(WHITE);
-  tft.setTextSize(2);
-  tft.print("C");
+  // tft.setCursor(55,130);
+  // tft.setTextColor(WHITE);
+  // tft.setTextSize(1);
+  // tft.print("o");
+  // tft.setCursor(60,132);
+  // tft.setTextColor(WHITE);
+  // tft.setTextSize(2);
+  // tft.print("°C");
+}
+
+void drawCentreChar(const char *buf, int x, int y)
+{
+    int16_t x1, y1;
+    uint16_t w, h;
+    //put x=0 to avoid text wrapping
+    tft.getTextBounds(buf, 0, y, &x1, &y1, &w, &h); //calc width of new string
+    Serial.println(buf);
+    Serial.println(x);
+    Serial.println(y);
+    Serial.println(x1);
+    Serial.println(y1);
+    Serial.println(w);
+    Serial.println(h);
+    tft.setCursor(x - w / 2, y);
+    tft.print(buf);
+}
+
+void drawCentreString(const String &buf, int x, int y)
+{
+    int16_t x1, y1;
+    uint16_t w, h;
+    tft.getTextBounds(buf, x, y, &x1, &y1, &w, &h); //calc width of new string
+    tft.setCursor(x - w / 2, y);
+    tft.print(buf);
 }
 
 void printWeatherIcon(int id)
@@ -285,25 +289,6 @@ void printWeatherIcon(int id)
  }
 }
 
-// String convertGMTTimeToLocal(String timeS)
-// {
-//  int length = timeS.length();
-//  timeS = timeS.substring(length-8,length-6);
-//  int time = timeS.toInt();
-//  time = time+TimeZone;
-
-//  if(time > 21 ||  time<7)
-//  {
-//   night=true;
-//  }else
-//  {
-//   night = false;
-//  }
-//  timeS = String(time)+":00";
-//  return timeS;
-// }
-
-
 void clearScreen()
 {
     tft.fillScreen(BLACK);
@@ -333,7 +318,7 @@ void drawFewClouds()
 
 void drawTheSun()
 {
-    tft.fillCircle(tft.width()/2,tft.height()/2,tft.width()/3,YELLOW);
+    tft.fillCircle(tft.width()/2,displayheight/2,displaywidth/3,YELLOW);
 }
 
 void drawTheFullMoon()
