@@ -8,7 +8,8 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 #include <ArduinoJson.h>
-#include <Adafruit_ST7735.h>
+// #include <Adafruit_ST7735.h>
+#include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
 #include <Adafruit_GFX.h>
 #include <ezTime.h>
 
@@ -23,9 +24,9 @@
 #define WHITE    0xFFFF
 #define GREY     0xC618
 
-#define cs   0  
-#define dc   4   
-#define rst  2 
+#define TFT_CS   0  
+#define TFT_DC   4   
+#define TFT_RST  2 
 
 const char* ssid     = "Buschfunk";      // SSID of local network
 const char* password = "FritzBoxIstTotalSuper";   // Password on network
@@ -33,8 +34,62 @@ String APIKEY = "fb1d7728528b56504cb6af0aba6c6fbc";
 String CityID = "2885397"; //Sparta, Greece
 Timezone myTZ;
 
-const int displaywidth = 80;
-const int displayheight = 160;
+//bitmap width and height
+const int bmpw = 128;
+const int bmph = 90;
+
+// In order to make the code more flexible reading different display size
+// here you need to define areas for the different display items time, icon, 
+// optionally description (on a larger display). and temperature
+// The code will center the respective items inside these areas
+// the original code assumes a display size of 128x160 with an icon area of
+// (x,y,w,h,): (0,35,128,90)
+
+// values for 80x160 display
+// const int timeareax=24;
+// const int timeareay=0;
+// const int timeareaw=80;
+// const int timeareah=35;
+
+// const int iconareax=24;
+// const int iconareay=35;
+// const int iconareaw=80;
+// const int iconareah=90;
+//top left corner of the 128x90 icon area centered on the iconareaw
+// const int iconareacx = iconareax+(iconareaw/2)-(bmpw/2);
+
+// const int tempareax=24;
+// const int tempareay=125;
+// const int tempareaw=80;
+// const int tempareah=35;
+
+// values for 240x240 display with additional data (description, wind)
+const int timeareax=0;
+const int timeareay=0;
+const int timeareaw=240;
+const int timeareah=35;
+
+const int iconareax=0;
+const int iconareay=35;
+const int iconareaw=240;
+const int iconareah=90;
+//top left corner of the 128x90 icon area centered on the iconareaw
+const int iconareacx = iconareax+(iconareaw/2)-(bmpw/2);
+
+const int descrareax=0;
+const int descrareay=125;
+const int descrareaw=240;
+const int descrareah=75;
+
+const int tempareax=0;
+const int tempareay=205;
+const int tempareaw=240;
+const int tempareah=35;
+
+
+int TESTCOUNTER=-1;
+const int TESTARR[]= {800, 801, 802, 803, 804, 200,300,500,511,520,521,522,531,600,601,602,611,612,615,616,620,621,622,701};
+const int TESTARRSIZE = sizeof(TESTARR)/sizeof(TESTARR[0]);
 
 WiFiClient client;
 char servername[]="api.openweathermap.org";  // remote server we will connect to
@@ -45,17 +100,41 @@ String weatherDescription ="";
 String weatherLocation = "";
 float Temperature;
 
+struct weatherdata
+{
+  char time[6];
+  float temp;
+  int weatherID;
+};
+
+typedef struct weatherdata Weatherdata;
+Weatherdata theWeatherdata;
+
 extern  unsigned char  cloud[];
 extern  unsigned char  thunder[];
 extern  unsigned char  wind[];
 
-Adafruit_ST7735 tft = Adafruit_ST7735(cs, dc, rst);
+
+
+// Init ST7735 80x160
+// Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
+
+  // Init ST7789 240x240
+Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+
 
 void setup() {
   Serial.begin(115200);
-  tft.initR(INITR_GREENTAB);
-  tft.setRotation(ST7735_MADCTL_BGR);
+
+  // Init ST7735 80x160
+  // tft.initR(INITR_GREENTAB);
+  // tft.setRotation(ST7735_MADCTL_BGR);
+  // tft.invertDisplay(true);
+
+  // Init ST7789 240x240
+  tft.init(240, 240, SPI_MODE2);
   tft.invertDisplay(true);
+
 
   tft.fillScreen(BLACK);
 
@@ -86,20 +165,27 @@ void setup() {
 
 void loop() {
 
-    if(counter == 360) //Get new data every 30 minutes
-    {
+  // if (TESTCOUNTER<(TESTARRSIZE-1))
+  //   TESTCOUNTER++;
+  // else
+  //   TESTCOUNTER = 0;
+
+  //Get new data every 30 minutes
+  if(counter == 360){
       counter = 0;
-      getWeatherData();
-      
-    }else
-    {
+      bool success = getWeatherData();
+      if (success){
+        printData();
+      }
+    }
+    else{
       counter++;
       delay(5000);
       Serial.println(counter); 
     }
 }
 
-void getWeatherData() //client function to send/receive GET request data.
+boolean getWeatherData() //client function to send/receive GET request data.
 {
 
   HTTPClient http;
@@ -109,9 +195,12 @@ void getWeatherData() //client function to send/receive GET request data.
   
   http.GET();
 
-  //char result[]="{\"cod\":\"200\",\"message\":0,\"cnt\":1,\"list\":[{\"dt\":1586034000,\"main\":{\"temp\":37.1,\"feels_like\":2.87,\"temp_min\":7.1,\"temp_max\":7.71,\"pressure\":1025,\"sea_level\":1025,\"grnd_level\":1019,\"humidity\":61,\"temp_kf\":-0.61},\"weather\":[{\"id\":800,\"main\":\"Clear\",\"description\":\"clear sky\",\"icon\":\"01n\"}],\"clouds\":{\"all\":0},\"wind\":{\"speed\":3.23,\"deg\":126},\"sys\":{\"pod\":\"n\"},\"dt_txt\":\"2020-04-04 21:00:00\"}],\"city\":{\"id\":2885397,\"name\":\"Korschenbroich\",\"coord\":{\"lat\":51.1914,\"lon\":6.5135},\"country\":\"DE\",\"timezone\":7200,\"sunrise\":1585976515,\"sunset\":1586023881}}";
-
   StaticJsonDocument<1024> root;
+
+  // for testing purposes
+  // char result[]="{\"cod\":\"200\",\"message\":0,\"cnt\":1,\"list\":[{\"dt\":1586034000,\"main\":{\"temp\":37.1,\"feels_like\":2.87,\"temp_min\":7.1,\"temp_max\":7.71,\"pressure\":1025,\"sea_level\":1025,\"grnd_level\":1019,\"humidity\":61,\"temp_kf\":-0.61},\"weather\":[{\"id\":800,\"main\":\"Clear\",\"description\":\"clear sky\",\"icon\":\"01n\"}],\"clouds\":{\"all\":0},\"wind\":{\"speed\":3.23,\"deg\":126},\"sys\":{\"pod\":\"n\"},\"dt_txt\":\"2020-04-04 21:00:00\"}],\"city\":{\"id\":2885397,\"name\":\"Korschenbroich\",\"coord\":{\"lat\":51.1914,\"lon\":6.5135},\"country\":\"DE\",\"timezone\":7200,\"sunrise\":1585976515,\"sunset\":1586023881}}";
+  // DeserializationError error = deserializeJson(root, result);
+
 
   // Deserialize the JSON document
   DeserializationError error = deserializeJson(root, http.getStream());
@@ -119,71 +208,46 @@ void getWeatherData() //client function to send/receive GET request data.
   if (error) {
     Serial.print(F("deserializeJson() failed: "));
     Serial.println(error.c_str());
-    return;
+    return false;
   }
   http.end();
 
-  JsonObject list_0 = root["list"][0];
-  JsonObject main =  list_0["main"];
-  JsonArray weather_arr = list_0["weather"];
-  JsonObject weather_0 = weather_arr[0];
 
 
-  const char* location = root["city"]["name"];
-  float temperature = main["temp"];
-  const char* weather = weather_0["main"];
-  const char* description = weather_0["description"];
-  int weatherID = weather_0["id"];
-  long dt_utc = list_0["dt"];
+  theWeatherdata.temp = root["list"][0]["main"]["temp"];
+  theWeatherdata.weatherID = root["list"][0]["weather"][0]["id"];
+  // theWeatherdata.temp = random(-200, 400)/10.0;
+  // theWeatherdata.weatherID = TESTARR[TESTCOUNTER];
 
-  // convert UTC timestamp to local time
-  long dt_local = myTZ.tzTime(dt_utc, UTC_TIME);
-  String timeS = dateTime(dt_local, "H:i");
+  dateTime(myTZ.tzTime(root["list"][0]["dt"], UTC_TIME), "H:i").toCharArray(theWeatherdata.time,6);
+  Serial.print("Time: ");
+  Serial.println(theWeatherdata.time);
+  Serial.print("Temp: ");
+  Serial.println(theWeatherdata.temp);
+  Serial.print("weatherid: ");
+  Serial.println(theWeatherdata.weatherID);
 
-  // limiting Temperature to 1 decimal place
-  char tempstr[3];
-  dtostrf(temperature,2,1, tempstr);
-
-  Serial.println(location);
-  Serial.println(tempstr);
-
-  Serial.println(weather);
-  Serial.println(description);
-  Serial.println(weatherID);
-
-  Serial.println(timeS);
-
-  clearScreen();
-
-  //int weatherID = idString.toInt();
-  printData(timeS,tempstr, weatherID);
-
+  return true;
 }
 
-void printData(String timeString, char* tempstr, int weatherID)
+void printData()
 {
-  // tft.setCursor(10,20);
+  clearScreen();
   tft.setTextColor(WHITE);
   tft.setTextSize(2);
-  drawCentreString(timeString, tft.width()/2, 20);
-  //tft.print(timeString);
+  drawCentreChar(theWeatherdata.time, timeareax+timeareaw/2, timeareay+timeareah/2);
 
-  printWeatherIcon(weatherID);
+  printWeatherIcon(theWeatherdata.weatherID);
 
-  // tft.setCursor(10,132);
-  // tft.setTextColor(WHITE);
-  // tft.setTextSize(2);
-  
-  char degC[3] = "oC";
-  
-  char all[5] = "";
+  char degC[3] = " C";
+  char tempstr[6];
+  char all[9] = "";
+  dtostrf(theWeatherdata.temp,2,1, tempstr);
   strcat(all, tempstr);
   strcat(all, degC);
-  Serial.println(tempstr);
-  Serial.println(all);
-  drawCentreChar(all, tft.width()/2, 132);
-  // drawCentreChar(tempstr, tft.width()/2, 132);
-  //tft.print(tempstr);
+  drawCentreChar(all, tempareax+tempareaw/2, tempareay+tempareah/2);
+
+  // tft.fillRect(descrareax,descrareay,descrareaw,descrareah,GREY);
 
   // tft.setCursor(55,130);
   // tft.setTextColor(WHITE);
@@ -201,26 +265,11 @@ void drawCentreChar(const char *buf, int x, int y)
     uint16_t w, h;
     //put x=0 to avoid text wrapping
     tft.getTextBounds(buf, 0, y, &x1, &y1, &w, &h); //calc width of new string
-    Serial.println(buf);
-    Serial.println(x);
-    Serial.println(y);
-    Serial.println(x1);
-    Serial.println(y1);
-    Serial.println(w);
-    Serial.println(h);
     tft.setCursor(x - w / 2, y);
     tft.print(buf);
 }
 
-void drawCentreString(const String &buf, int x, int y)
-{
-    int16_t x1, y1;
-    uint16_t w, h;
-    tft.getTextBounds(buf, x, y, &x1, &y1, &w, &h); //calc width of new string
-    tft.setCursor(x - w / 2, y);
-    tft.print(buf);
-}
-
+// see https://openweathermap.org/weather-conditions
 void printWeatherIcon(int id)
 {
  switch(id)
@@ -282,8 +331,8 @@ void printWeatherIcon(int id)
   case 751: drawFog(); break;
   case 761: drawFog(); break;
   case 762: drawFog(); break;
-  case 771: drawFog(); break;
-  case 781: drawFog(); break;
+  case 771: drawWind(); break;
+  case 781: drawWind(); break;
 
   default:break; 
  }
@@ -318,30 +367,30 @@ void drawFewClouds()
 
 void drawTheSun()
 {
-    tft.fillCircle(tft.width()/2,displayheight/2,displaywidth/3,YELLOW);
+    tft.fillCircle(iconareacx+(bmpw/2),iconareay+iconareah/2,iconareah/3,YELLOW);
 }
 
 void drawTheFullMoon()
 {
-    tft.fillCircle(64,80,26,GREY);
+    tft.fillCircle(iconareacx+(bmpw/2),iconareay+iconareah/2,iconareah/3,GREY);
 }
 
 void drawTheMoon()
 {
-    tft.fillCircle(64,80,26,GREY);
-    tft.fillCircle(75,73,26,BLACK);
+    tft.fillCircle(iconareacx+(bmpw/2),iconareay+iconareah/2,iconareah/3,GREY);
+    tft.fillCircle(iconareacx+75,iconareay+38,iconareah/3,BLACK);
 }
 
 void drawCloud()
 {
-     tft.drawBitmap(0,35,cloud,128,90,GREY);
+     tft.drawBitmap(iconareacx,iconareay,cloud,bmpw,bmph,GREY);
 }
 
 void drawCloudWithSun()
 {
-     tft.fillCircle(73,70,20,YELLOW);
-     tft.drawBitmap(0,36,cloud,128,90,BLACK);
-     tft.drawBitmap(0,40,cloud,128,90,GREY);
+     tft.fillCircle(iconareacx+73,iconareay+34,20,YELLOW);
+     drawCloud();
+     tft.drawBitmap(iconareacx,iconareay+4,cloud,bmpw,bmph,GREY);
 }
 
 void drawLightRainWithSunOrMoon()
@@ -357,125 +406,194 @@ void drawLightRainWithSunOrMoon()
 
 void drawLightRain()
 {
-     tft.drawBitmap(0,35,cloud,128,90,GREY);
-     tft.fillRoundRect(50, 105, 3, 13, 1, BLUE);
-     tft.fillRoundRect(65, 105, 3, 13, 1, BLUE);
-     tft.fillRoundRect(80, 105, 3, 13, 1, BLUE);
+     drawCloud();
+     tft.fillRoundRect(iconareacx+50, iconareay+70, 3, 13, 1, BLUE);
+     tft.fillRoundRect(iconareacx+65, iconareay+70, 3, 13, 1, BLUE);
+     tft.fillRoundRect(iconareacx+80, iconareay+70, 3, 13, 1, BLUE);
 }
 
 void drawModerateRain()
 {
-     tft.drawBitmap(0,35,cloud,128,90,GREY);
-     tft.fillRoundRect(50, 105, 3, 15, 1, BLUE);
-     tft.fillRoundRect(57, 102, 3, 15, 1, BLUE);
-     tft.fillRoundRect(65, 105, 3, 15, 1, BLUE);
-     tft.fillRoundRect(72, 102, 3, 15, 1, BLUE);
-     tft.fillRoundRect(80, 105, 3, 15, 1, BLUE);
+     drawCloud();
+     tft.fillRoundRect(iconareacx+50, iconareay+70, 3, 15, 1, BLUE);
+     tft.fillRoundRect(iconareacx+57, iconareay+67, 3, 15, 1, BLUE);
+     tft.fillRoundRect(iconareacx+65, iconareay+70, 3, 15, 1, BLUE);
+     tft.fillRoundRect(iconareacx+72, iconareay+67, 3, 15, 1, BLUE);
+     tft.fillRoundRect(iconareacx+80, iconareay+70, 3, 15, 1, BLUE);
 }
 
 void drawHeavyRain()
 {
-     tft.drawBitmap(0,35,cloud,128,90,GREY);
-     tft.fillRoundRect(43, 102, 3, 15, 1, BLUE);
-     tft.fillRoundRect(50, 105, 3, 15, 1, BLUE);
-     tft.fillRoundRect(57, 102, 3, 15, 1, BLUE);
-     tft.fillRoundRect(65, 105, 3, 15, 1, BLUE);
-     tft.fillRoundRect(72, 102, 3, 15, 1, BLUE);
-     tft.fillRoundRect(80, 105, 3, 15, 1, BLUE);
-     tft.fillRoundRect(87, 102, 3, 15, 1, BLUE);
+     drawCloud();
+     tft.fillRoundRect(iconareacx+43, iconareay+67, 3, 15, 1, BLUE);
+     tft.fillRoundRect(iconareacx+50, iconareay+70, 3, 15, 1, BLUE);
+     tft.fillRoundRect(iconareacx+57, iconareay+67, 3, 15, 1, BLUE);
+     tft.fillRoundRect(iconareacx+65, iconareay+70, 3, 15, 1, BLUE);
+     tft.fillRoundRect(iconareacx+72, iconareay+67, 3, 15, 1, BLUE);
+     tft.fillRoundRect(iconareacx+80, iconareay+70, 3, 15, 1, BLUE);
+     tft.fillRoundRect(iconareacx+87, iconareay+67, 3, 15, 1, BLUE);
 }
 
 void drawThunderstorm()
 {
-     tft.drawBitmap(0,40,thunder,128,90,YELLOW);
-     tft.drawBitmap(0,35,cloud,128,90,GREY);
-     tft.fillRoundRect(48, 102, 3, 15, 1, BLUE);
-     tft.fillRoundRect(55, 102, 3, 15, 1, BLUE);
-     tft.fillRoundRect(74, 102, 3, 15, 1, BLUE);
-     tft.fillRoundRect(82, 102, 3, 15, 1, BLUE);
+     tft.drawBitmap(iconareacx,iconareay+5,thunder,bmpw,bmph,YELLOW);
+     drawCloud();
+     tft.fillRoundRect(iconareacx+48, iconareay+67, 3, 15, 1, BLUE);
+     tft.fillRoundRect(iconareacx+55, iconareay+67, 3, 15, 1, BLUE);
+     tft.fillRoundRect(iconareacx+74, iconareay+67, 3, 15, 1, BLUE);
+     tft.fillRoundRect(iconareacx+82, iconareay+67, 3, 15, 1, BLUE);
 }
 
 void drawLightSnowfall()
 {
-     tft.drawBitmap(0,30,cloud,128,90,GREY);
-     tft.fillCircle(50, 100, 3, GREY);
-     tft.fillCircle(65, 103, 3, GREY);
-     tft.fillCircle(82, 100, 3, GREY);
+     drawCloud();
+     tft.fillCircle(iconareacx+50, iconareay+67, 3, GREY);
+     tft.fillCircle(iconareacx+65, iconareay+70, 3, GREY);
+     tft.fillCircle(iconareacx+82, iconareay+67, 3, GREY);
 }
 
 void drawModerateSnowfall()
 {
-     tft.drawBitmap(0,35,cloud,128,90,GREY);
-     tft.fillCircle(50, 105, 3, GREY);
-     tft.fillCircle(50, 115, 3, GREY);
-     tft.fillCircle(65, 108, 3, GREY);
-     tft.fillCircle(65, 118, 3, GREY);
-     tft.fillCircle(82, 105, 3, GREY);
-     tft.fillCircle(82, 115, 3, GREY);
+     drawCloud();
+     tft.fillCircle(iconareacx+50, iconareay+70, 3, GREY);
+     tft.fillCircle(iconareacx+50, iconareay+80, 3, GREY);
+     tft.fillCircle(iconareacx+65, iconareay+73, 3, GREY);
+     tft.fillCircle(iconareacx+65, iconareay+83, 3, GREY);
+     tft.fillCircle(iconareacx+82, iconareay+70, 3, GREY);
+     tft.fillCircle(iconareacx+82, iconareay+80, 3, GREY);
 }
 
 void drawHeavySnowfall()
 {
-     tft.drawBitmap(0,35,cloud,128,90,GREY);
-     tft.fillCircle(40, 105, 3, GREY);
-     tft.fillCircle(52, 105, 3, GREY);
-     tft.fillCircle(52, 115, 3, GREY);
-     tft.fillCircle(65, 108, 3, GREY);
-     tft.fillCircle(65, 118, 3, GREY);
-     tft.fillCircle(80, 105, 3, GREY);
-     tft.fillCircle(80, 115, 3, GREY);
-     tft.fillCircle(92, 105, 3, GREY);     
+     drawCloud();
+     tft.fillCircle(iconareacx+40, iconareay+70, 3, GREY);
+     tft.fillCircle(iconareacx+52, iconareay+70, 3, GREY);
+     tft.fillCircle(iconareacx+52, iconareay+80, 3, GREY);
+     tft.fillCircle(iconareacx+65, iconareay+73, 3, GREY);
+     tft.fillCircle(iconareacx+65, iconareay+83, 3, GREY);
+     tft.fillCircle(iconareacx+80, iconareay+70, 3, GREY);
+     tft.fillCircle(iconareacx+80, iconareay+80, 3, GREY);
+     tft.fillCircle(iconareacx+92, iconareay+70, 3, GREY);     
 }
 
 void drawCloudSunAndRain()
 {
-     tft.fillCircle(73,70,20,YELLOW);
-     tft.drawBitmap(0,32,cloud,128,90,BLACK);
-     tft.drawBitmap(0,35,cloud,128,90,GREY);
-     tft.fillRoundRect(50, 105, 3, 13, 1, BLUE);
-     tft.fillRoundRect(65, 105, 3, 13, 1, BLUE);
-     tft.fillRoundRect(80, 105, 3, 13, 1, BLUE);
+     tft.fillCircle(iconareacx+73,iconareay+35,20,YELLOW);
+     tft.drawBitmap(iconareacx,iconareay,cloud,bmpw,bmph,BLACK);
+     tft.drawBitmap(iconareacx,iconareay+3,cloud,bmpw,bmph,GREY);
+     tft.fillRoundRect(iconareacx+50, iconareay+73, 3, 13, 1, BLUE);
+     tft.fillRoundRect(iconareacx+65, iconareay+73, 3, 13, 1, BLUE);
+     tft.fillRoundRect(iconareacx+80, iconareay+73, 3, 13, 1, BLUE);
 }
 
 void drawCloudAndTheMoon()
 {
-     tft.fillCircle(94,60,18,GREY);
-     tft.fillCircle(105,53,18,BLACK);
-     tft.drawBitmap(0,32,cloud,128,90,BLACK);
-     tft.drawBitmap(0,35,cloud,128,90,GREY);
+     tft.fillCircle(iconareacx+94,iconareay+25,18,GREY);
+     tft.fillCircle(iconareacx+105,iconareay+18,18,BLACK);
+     tft.drawBitmap(iconareacx,iconareay,cloud,bmpw,bmph,BLACK);
+     tft.drawBitmap(iconareacx,iconareay+3,cloud,bmpw,bmph,GREY);
 }
 
 void drawCloudTheMoonAndRain()
 {
-     tft.fillCircle(94,60,18,GREY);
-     tft.fillCircle(105,53,18,BLACK);
-     tft.drawBitmap(0,32,cloud,128,90,BLACK);
-     tft.drawBitmap(0,35,cloud,128,90,GREY);
-     tft.fillRoundRect(50, 105, 3, 11, 1, BLUE);
-     tft.fillRoundRect(65, 105, 3, 11, 1, BLUE);
-     tft.fillRoundRect(80, 105, 3, 11, 1, BLUE);
+     tft.fillCircle(iconareacx+94,iconareay+28,18,GREY);
+     tft.fillCircle(iconareacx+105,iconareay+21,18,BLACK);
+     tft.drawBitmap(iconareacx,iconareay,cloud,bmpw,bmph,BLACK);
+     tft.drawBitmap(iconareacx,iconareay+3,cloud,bmpw,bmph,GREY);
+     tft.fillRoundRect(iconareacx+50, iconareay+73, 3, 11, 1, BLUE);
+     tft.fillRoundRect(iconareacx+65, iconareay+73, 3, 11, 1, BLUE);
+     tft.fillRoundRect(iconareacx+80, iconareay+73, 3, 11, 1, BLUE);
 }
 
 void drawWind()
 {  
-     tft.drawBitmap(0,35,wind,128,90,GREY);   
+     tft.drawBitmap(iconareacx,iconareay,wind,bmpw,bmph,GREY);   
 }
 
 void drawFog()
 {
-  tft.fillRoundRect(45, 60, 40, 4, 1, GREY);
-  tft.fillRoundRect(40, 70, 50, 4, 1, GREY);
-  tft.fillRoundRect(35, 80, 60, 4, 1, GREY);
-  tft.fillRoundRect(40, 90, 50, 4, 1, GREY);
-  tft.fillRoundRect(45, 100, 40, 4, 1, GREY);
+  tft.fillRoundRect(iconareacx+30, iconareay+25, 55, 4, 1, GREY);
+  tft.fillRoundRect(iconareacx+10, iconareay+35, 90, 4, 1, GREY);
+  tft.fillRoundRect(iconareacx+20, iconareay+45, 100, 4, 1, GREY);
+  tft.fillRoundRect(iconareacx+5, iconareay+55, 90, 4, 1, GREY);
+  tft.fillRoundRect(iconareacx+20, iconareay+65, 80, 4, 1, GREY);
 }
 
 void clearIcon()
 {
-     tft.fillRect(0,40,128,100,BLACK);
+     tft.fillRect(iconareacx,iconareay,bmpw,bmph,BLACK);
 }
 
+void drawAll()
+{
+    drawTheSun();
+    delay(1000);
+    clearIcon();
 
+    drawTheFullMoon();
+    delay(1000);
+    clearIcon();
+    
+    drawTheMoon();
+    delay(1000);
+    clearIcon();
+    
+    drawCloud();
+    delay(1000);
+    clearIcon();
+
+    drawCloudWithSun();
+    delay(1000);
+    clearIcon();
+    
+    drawLightRain();
+    delay(1000);
+    clearIcon();
+
+    drawModerateRain();
+    delay(1000);
+    clearIcon();
+
+    drawHeavyRain();
+    delay(1000);
+    clearIcon();
+
+    drawThunderstorm();
+    delay(1000);
+    clearIcon();
+
+    drawLightSnowfall();
+    delay(1000);
+    clearIcon();
+
+    drawModerateSnowfall();
+    delay(1000);
+    clearIcon();
+
+    drawHeavySnowfall();
+    delay(1000);
+    clearIcon();
+
+    drawCloudSunAndRain();
+    delay(1000);
+    clearIcon();
+
+    drawCloudAndTheMoon();
+    delay(1000);
+    clearIcon();
+
+    drawCloudTheMoonAndRain();
+    delay(1000);
+    clearIcon();
+
+    drawWind();
+    delay(1000);
+    clearIcon();
+
+    drawFog();
+    delay(1000);
+    clearIcon();
+}
 
 
 
