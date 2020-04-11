@@ -28,6 +28,15 @@
 #define TFT_DC   4   
 #define TFT_RST  2 
 
+// the two next lines must be changed together
+// WEATHERDATA_SIZE defines how many forecast elements are fetched from openweathermaps
+// weatherJSONsize was created using https://arduinojson.org/v6/assistant/ for this particular number
+#define WEATHERDATA_SIZE 8
+const size_t weatherJSONsize = 8*JSON_ARRAY_SIZE(1) + JSON_ARRAY_SIZE(8) + 16*JSON_OBJECT_SIZE(1) + 9*JSON_OBJECT_SIZE(2) + 8*JSON_OBJECT_SIZE(4) + JSON_OBJECT_SIZE(5) + 9*JSON_OBJECT_SIZE(7) + 8*JSON_OBJECT_SIZE(9) + 2000;
+DynamicJsonDocument root(weatherJSONsize);
+
+
+
 const char* ssid     = "Buschfunk";      // SSID of local network
 const char* password = "FritzBoxIstTotalSuper";   // Password on network
 String APIKEY = "fb1d7728528b56504cb6af0aba6c6fbc";
@@ -87,9 +96,10 @@ const int tempareaw=240;
 const int tempareah=35;
 
 
-int TESTCOUNTER=-1;
-const int TESTARR[]= {800, 801, 802, 803, 804, 200,300,500,511,520,521,522,531,600,601,602,611,612,615,616,620,621,622,701};
-const int TESTARRSIZE = sizeof(TESTARR)/sizeof(TESTARR[0]);
+  int TESTCOUNTER=-1;
+  const int TESTARR[]= {800, 801, 802, 803, 804, 200,300,500,511,520,521,522,531,600,601,602,611,612,615,616,620,621,622,701};
+  const int TESTARRSIZE = sizeof(TESTARR)/sizeof(TESTARR[0]);
+
 
 WiFiClient client;
 char servername[]="api.openweathermap.org";  // remote server we will connect to
@@ -102,13 +112,17 @@ float Temperature;
 
 struct weatherdata
 {
-  char time[6];
+  char time[14];
   float temp;
   int weatherID;
+  char description[20];
+  float wind;
 };
 
-typedef struct weatherdata Weatherdata;
-Weatherdata theWeatherdata;
+// typedef struct weatherdata Weatherdata;
+// Weatherdata theWeatherdata;
+
+struct weatherdata theWeatherdata[WEATHERDATA_SIZE];
 
 extern  unsigned char  cloud[];
 extern  unsigned char  thunder[];
@@ -175,7 +189,7 @@ void loop() {
       counter = 0;
       bool success = getWeatherData();
       if (success){
-        printData();
+        printData(theWeatherdata[0]);
       }
     }
     else{
@@ -191,11 +205,11 @@ boolean getWeatherData() //client function to send/receive GET request data.
   HTTPClient http;
   http.useHTTP10(true);
 
-  http.begin(client, "http://api.openweathermap.org/data/2.5/forecast?id="+CityID+"&units=metric&cnt=1&APPID="+APIKEY);
+  http.begin(client, "http://api.openweathermap.org/data/2.5/forecast?id="+CityID+"&units=metric&cnt=8&APPID="+APIKEY+"&lang=de");
   
   http.GET();
 
-  StaticJsonDocument<1024> root;
+  // StaticJsonDocument<1024> root;
 
   // for testing purposes
   // char result[]="{\"cod\":\"200\",\"message\":0,\"cnt\":1,\"list\":[{\"dt\":1586034000,\"main\":{\"temp\":37.1,\"feels_like\":2.87,\"temp_min\":7.1,\"temp_max\":7.71,\"pressure\":1025,\"sea_level\":1025,\"grnd_level\":1019,\"humidity\":61,\"temp_kf\":-0.61},\"weather\":[{\"id\":800,\"main\":\"Clear\",\"description\":\"clear sky\",\"icon\":\"01n\"}],\"clouds\":{\"all\":0},\"wind\":{\"speed\":3.23,\"deg\":126},\"sys\":{\"pod\":\"n\"},\"dt_txt\":\"2020-04-04 21:00:00\"}],\"city\":{\"id\":2885397,\"name\":\"Korschenbroich\",\"coord\":{\"lat\":51.1914,\"lon\":6.5135},\"country\":\"DE\",\"timezone\":7200,\"sunrise\":1585976515,\"sunset\":1586023881}}";
@@ -213,36 +227,65 @@ boolean getWeatherData() //client function to send/receive GET request data.
   http.end();
 
 
+  for (int cnt=0;cnt<WEATHERDATA_SIZE; cnt++){
+    theWeatherdata[cnt].temp = root["list"][cnt]["main"]["temp"];
+    theWeatherdata[cnt].weatherID = root["list"][cnt]["weather"][0]["id"];
+    // dateTime(myTZ.tzTime(root["list"][cnt]["dt"], UTC_TIME), "H:i").toCharArray(theWeatherdata[cnt].time,6);
 
-  theWeatherdata.temp = root["list"][0]["main"]["temp"];
-  theWeatherdata.weatherID = root["list"][0]["weather"][0]["id"];
-  // theWeatherdata.temp = random(-200, 400)/10.0;
-  // theWeatherdata.weatherID = TESTARR[TESTCOUNTER];
+    //theWeatherdata[cnt].time = root["list"][cnt]["dt"];
+    generateTimeString(root["list"][cnt]["dt"], theWeatherdata[cnt].time);
 
-  dateTime(myTZ.tzTime(root["list"][0]["dt"], UTC_TIME), "H:i").toCharArray(theWeatherdata.time,6);
-  Serial.print("Time: ");
-  Serial.println(theWeatherdata.time);
-  Serial.print("Temp: ");
-  Serial.println(theWeatherdata.temp);
-  Serial.print("weatherid: ");
-  Serial.println(theWeatherdata.weatherID);
-
+    Serial.print("element: ");
+    Serial.println(cnt);
+    Serial.print("Time: ");
+    Serial.println(theWeatherdata[cnt].time);
+    Serial.print("Temp: ");
+    Serial.println(theWeatherdata[cnt].temp);
+    Serial.print("weatherid: ");
+    Serial.println(theWeatherdata[cnt].weatherID);
+    Serial.println("-------------------------------");
+  }
   return true;
 }
 
-void printData()
+// we can't just use myTZ.hour(dt) because ezTime is broken:
+// https://github.com/ropg/ezTime/issues/10
+// https://github.com/ropg/ezTime/issues/32
+void generateTimeString(long dt, char *str){
+    char t[6];
+    myTZ.dateTime(myTZ.tzTime(dt,UTC_TIME),"H:i").toCharArray(t,6);
+    Serial.println(dt);
+
+// this comparison is also broken. It will switch days only on midnight, UTC
+    if (UTC.day() == UTC.day(dt)){
+      strcpy(str, "Heute, ");
+    }
+    else if (UTC.day()+1 == UTC.day(dt)){
+      strcpy(str, "Morgen, ");
+    }
+    else {
+      Serial.println (" WTF!?");
+      strcpy(str, "WTF?!");
+    }
+    strcat(str, t);
+    Serial.println(str);
+}
+
+void printData(const struct weatherdata wd *)
 {
   clearScreen();
   tft.setTextColor(WHITE);
   tft.setTextSize(2);
-  drawCentreChar(theWeatherdata.time, timeareax+timeareaw/2, timeareay+timeareah/2);
+  // drawCentreChar(theWeatherdata[0].time, timeareax+timeareaw/2, timeareay+timeareah/2);
+  drawCentreChar(wd.time, timeareax+timeareaw/2, timeareay+timeareah/2);
 
-  printWeatherIcon(theWeatherdata.weatherID);
+  // printWeatherIcon(theWeatherdata[0].weatherID);
+  printWeatherIcon(wd.weatherID);
 
   char degC[3] = " C";
   char tempstr[6];
   char all[9] = "";
-  dtostrf(theWeatherdata.temp,2,1, tempstr);
+  dtostrf(wd.temp,2,1, tempstr);
   strcat(all, tempstr);
   strcat(all, degC);
   drawCentreChar(all, tempareax+tempareaw/2, tempareay+tempareah/2);
