@@ -35,6 +35,8 @@
 const size_t weatherJSONsize = 8*JSON_ARRAY_SIZE(1) + JSON_ARRAY_SIZE(8) + 16*JSON_OBJECT_SIZE(1) + 9*JSON_OBJECT_SIZE(2) + 8*JSON_OBJECT_SIZE(4) + JSON_OBJECT_SIZE(5) + 9*JSON_OBJECT_SIZE(7) + 8*JSON_OBJECT_SIZE(9) + 2000;
 DynamicJsonDocument root(weatherJSONsize);
 
+long nextpoll;
+long nextswitch;
 
 
 const char* ssid     = "Buschfunk";      // SSID of local network
@@ -123,6 +125,7 @@ struct weatherdata
 // Weatherdata theWeatherdata;
 
 struct weatherdata theWeatherdata[WEATHERDATA_SIZE];
+int slot = 0;
 
 extern  unsigned char  cloud[];
 extern  unsigned char  thunder[];
@@ -155,7 +158,6 @@ void setup() {
   Serial.println("Connecting");
   WiFi.begin(ssid, password);
 
-  tft.setCursor(10,80);
   tft.setTextColor(WHITE);
   tft.setTextSize(1);
   drawCentreChar("Connecting...", tft.width()/2, tft.height()/2);
@@ -175,6 +177,8 @@ void setup() {
   myTZ.setDefault();
   Serial.print(F("Germany:         "));
   Serial.println(myTZ.dateTime());
+  nextpoll = now();
+  nextswitch = now()+10;
 }
 
 void loop() {
@@ -183,20 +187,31 @@ void loop() {
   //   TESTCOUNTER++;
   // else
   //   TESTCOUNTER = 0;
+  
 
   //Get new data every 30 minutes
-  if(counter == 360){
-      counter = 0;
-      bool success = getWeatherData();
-      if (success){
-        printData(theWeatherdata[0]);
-      }
+  if(now() > nextpoll ){
+    nextpoll = now() + 1800;
+    Serial.print("POLL ");
+    Serial.println(now());
+    bool success = getWeatherData();
+    if (success){
+      printData(0);
     }
-    else{
-      counter++;
-      delay(5000);
-      Serial.println(counter); 
-    }
+  }
+
+  if (now() >= nextswitch){
+    nextswitch = now()+5;
+    if (slot<WEATHERDATA_SIZE-1) slot++;
+    else slot=0;
+    Serial.print("MARK ");
+    Serial.print(slot);
+    Serial.print(": ");
+    Serial.println(now());
+    printData(slot);
+  }
+  
+
 }
 
 boolean getWeatherData() //client function to send/receive GET request data.
@@ -248,6 +263,8 @@ boolean getWeatherData() //client function to send/receive GET request data.
   return true;
 }
 
+
+
 // we can't just use myTZ.hour(dt) because ezTime is broken:
 // https://github.com/ropg/ezTime/issues/10
 // https://github.com/ropg/ezTime/issues/32
@@ -271,21 +288,21 @@ void generateTimeString(long dt, char *str){
     Serial.println(str);
 }
 
-void printData(const struct weatherdata wd *)
+void printData(int slot)
 {
   clearScreen();
   tft.setTextColor(WHITE);
   tft.setTextSize(2);
   // drawCentreChar(theWeatherdata[0].time, timeareax+timeareaw/2, timeareay+timeareah/2);
-  drawCentreChar(wd.time, timeareax+timeareaw/2, timeareay+timeareah/2);
+  drawCentreChar(theWeatherdata[slot].time, timeareax+timeareaw/2, timeareay+timeareah/2);
 
   // printWeatherIcon(theWeatherdata[0].weatherID);
-  printWeatherIcon(wd.weatherID);
+  printWeatherIcon(theWeatherdata[slot].weatherID);
 
   char degC[3] = " C";
   char tempstr[6];
   char all[9] = "";
-  dtostrf(wd.temp,2,1, tempstr);
+  dtostrf(theWeatherdata[slot].temp,2,1, tempstr);
   strcat(all, tempstr);
   strcat(all, degC);
   drawCentreChar(all, tempareax+tempareaw/2, tempareay+tempareah/2);
