@@ -11,6 +11,7 @@
 // #include <Adafruit_ST7735.h>
 #include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
 #include <Adafruit_GFX.h>
+#include <Fonts/FreeMono11pt8b.h>
 #include <ezTime.h>
 
 // Color definitions
@@ -69,6 +70,8 @@ const int bmph = 90;
 //top left corner of the 128x90 icon area centered on the iconareaw
 // const int iconareacx = iconareax+(iconareaw/2)-(bmpw/2);
 
+// const bool descrarea=false;
+
 // const int tempareax=24;
 // const int tempareay=125;
 // const int tempareaw=80;
@@ -87,6 +90,7 @@ const int iconareah=90;
 //top left corner of the 128x90 icon area centered on the iconareaw
 const int iconareacx = iconareax+(iconareaw/2)-(bmpw/2);
 
+const bool descrarea=true;
 const int descrareax=0;
 const int descrareay=125;
 const int descrareaw=240;
@@ -118,7 +122,7 @@ struct weatherdata
   float temp;
   int weatherID;
   char description[20];
-  float wind;
+  char wind[14]; //270 @ 15 km/h
 };
 
 // typedef struct weatherdata Weatherdata;
@@ -140,6 +144,148 @@ extern  unsigned char  wind[];
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
 
+/* UTF-8 to ISO-8859-1/ISO-8859-15 mapper.
+ * Return 0..255 for valid ISO-8859-15 code points, 256 otherwise.
+*/
+static inline unsigned int to_latin9(const unsigned int code)
+{
+    /* Code points 0 to U+00FF are the same in both. */
+    if (code < 256U)
+        return code;
+    switch (code) {
+    case 0x0152U: return 188U; /* U+0152 = 0xBC: OE ligature */
+    case 0x0153U: return 189U; /* U+0153 = 0xBD: oe ligature */
+    case 0x0160U: return 166U; /* U+0160 = 0xA6: S with caron */
+    case 0x0161U: return 168U; /* U+0161 = 0xA8: s with caron */
+    case 0x0178U: return 190U; /* U+0178 = 0xBE: Y with diaresis */
+    case 0x017DU: return 180U; /* U+017D = 0xB4: Z with caron */
+    case 0x017EU: return 184U; /* U+017E = 0xB8: z with caron */
+    case 0x20ACU: return 164U; /* U+20AC = 0xA4: Euro */
+    default:      return 256U;
+    }
+}
+
+/* Convert an UTF-8 string to ISO-8859-15.
+ * All invalid sequences are ignored.
+ * Note: output == input is allowed,
+ * but   input < output < input + length
+ * is not.
+ * Output has to have room for (length+1) chars, including the trailing NUL byte.
+*/
+size_t utf8_to_latin9(char *const output, const char *const input, const size_t length)
+{
+    unsigned char             *out = (unsigned char *)output;
+    const unsigned char       *in  = (const unsigned char *)input;
+    const unsigned char *const end = (const unsigned char *)input + length;
+    unsigned int               c;
+
+    while (in < end)
+        if (*in < 128)
+            *(out++) = *(in++); /* Valid codepoint */
+        else
+        if (*in < 192)
+            in++;               /* 10000000 .. 10111111 are invalid */
+        else
+        if (*in < 224) {        /* 110xxxxx 10xxxxxx */
+            if (in + 1 >= end)
+                break;
+            if ((in[1] & 192U) == 128U) {
+                c = to_latin9( (((unsigned int)(in[0] & 0x1FU)) << 6U)
+                             |  ((unsigned int)(in[1] & 0x3FU)) );
+                if (c < 256)
+                    *(out++) = c;
+            }
+            in += 2;
+
+        } else
+        if (*in < 240) {        /* 1110xxxx 10xxxxxx 10xxxxxx */
+            if (in + 2 >= end)
+                break;
+            if ((in[1] & 192U) == 128U &&
+                (in[2] & 192U) == 128U) {
+                c = to_latin9( (((unsigned int)(in[0] & 0x0FU)) << 12U)
+                             | (((unsigned int)(in[1] & 0x3FU)) << 6U)
+                             |  ((unsigned int)(in[2] & 0x3FU)) );
+                if (c < 256)
+                    *(out++) = c;
+            }
+            in += 3;
+
+        } else
+        if (*in < 248) {        /* 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx */
+            if (in + 3 >= end)
+                break;
+            if ((in[1] & 192U) == 128U &&
+                (in[2] & 192U) == 128U &&
+                (in[3] & 192U) == 128U) {
+                c = to_latin9( (((unsigned int)(in[0] & 0x07U)) << 18U)
+                             | (((unsigned int)(in[1] & 0x3FU)) << 12U)
+                             | (((unsigned int)(in[2] & 0x3FU)) << 6U)
+                             |  ((unsigned int)(in[3] & 0x3FU)) );
+                if (c < 256)
+                    *(out++) = c;
+            }
+            in += 4;
+
+        } else
+        if (*in < 252) {        /* 111110xx 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx */
+            if (in + 4 >= end)
+                break;
+            if ((in[1] & 192U) == 128U &&
+                (in[2] & 192U) == 128U &&
+                (in[3] & 192U) == 128U &&
+                (in[4] & 192U) == 128U) {
+                c = to_latin9( (((unsigned int)(in[0] & 0x03U)) << 24U)
+                             | (((unsigned int)(in[1] & 0x3FU)) << 18U)
+                             | (((unsigned int)(in[2] & 0x3FU)) << 12U)
+                             | (((unsigned int)(in[3] & 0x3FU)) << 6U)
+                             |  ((unsigned int)(in[4] & 0x3FU)) );
+                if (c < 256)
+                    *(out++) = c;
+            }
+            in += 5;
+
+        } else
+        if (*in < 254) {        /* 1111110x 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx */
+            if (in + 5 >= end)
+                break;
+            if ((in[1] & 192U) == 128U &&
+                (in[2] & 192U) == 128U &&
+                (in[3] & 192U) == 128U &&
+                (in[4] & 192U) == 128U &&
+                (in[5] & 192U) == 128U) {
+                c = to_latin9( (((unsigned int)(in[0] & 0x01U)) << 30U)
+                             | (((unsigned int)(in[1] & 0x3FU)) << 24U)
+                             | (((unsigned int)(in[2] & 0x3FU)) << 18U)
+                             | (((unsigned int)(in[3] & 0x3FU)) << 12U)
+                             | (((unsigned int)(in[4] & 0x3FU)) << 6U)
+                             |  ((unsigned int)(in[5] & 0x3FU)) );
+                if (c < 256)
+                    *(out++) = c;
+            }
+            in += 6;
+
+        } else
+            in++;               /* 11111110 and 11111111 are invalid */
+
+    /* Terminate the output string. */
+    *out = '\0';
+
+    return (size_t)(out - (unsigned char *)output);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 void setup() {
   Serial.begin(115200);
 
@@ -158,6 +304,7 @@ void setup() {
   Serial.println("Connecting");
   WiFi.begin(ssid, password);
 
+  tft.setFont(&FreeMono11pt8b);
   tft.setTextColor(WHITE);
   tft.setTextSize(1);
   drawCentreChar("Connecting...", tft.width()/2, tft.height()/2);
@@ -166,7 +313,8 @@ void setup() {
   Serial.println(tft.width());
   Serial.print("display height: ");
   Serial.println(tft.height());
-  
+
+
   while (WiFi.status() != WL_CONNECTED) {
   delay(500);
   }
@@ -250,6 +398,25 @@ boolean getWeatherData() //client function to send/receive GET request data.
     //theWeatherdata[cnt].time = root["list"][cnt]["dt"];
     generateTimeString(root["list"][cnt]["dt"], theWeatherdata[cnt].time);
 
+    // const char* description;
+    // description = root["list"][cnt]["weather"][0]["description"];
+    // const char* description = "Überwiegend bewölkt";
+    char description [30] = "Überwiegend bewölkt";
+    //utf8_to_latin9 (description, theWeatherdata[cnt].description, 20);
+    utf8_to_latin9 (description, description, 20);
+    strcpy(theWeatherdata[cnt].description, description);
+
+    int winddir = root["list"][cnt]["wind"]["deg"];
+    char winddirchar[4];
+    itoa(winddir,winddirchar,10);
+    int windspeed = root["list"][cnt]["wind"]["speed"]; // m/s in metric
+    char windspeedchar[4];
+    sprintf(windspeedchar,"%3.0f",windspeed*3.6);
+    strcpy(theWeatherdata[cnt].wind, winddirchar);
+    strcat(theWeatherdata[cnt].wind, "@");
+    strcat(theWeatherdata[cnt].wind, windspeedchar);
+    strcat(theWeatherdata[cnt].wind, "km/h");
+
     Serial.print("element: ");
     Serial.println(cnt);
     Serial.print("Time: ");
@@ -258,6 +425,11 @@ boolean getWeatherData() //client function to send/receive GET request data.
     Serial.println(theWeatherdata[cnt].temp);
     Serial.print("weatherid: ");
     Serial.println(theWeatherdata[cnt].weatherID);
+    Serial.print("description: ");
+    Serial.println(theWeatherdata[cnt].description);
+    Serial.print("wind: ");
+    Serial.println(theWeatherdata[cnt].wind);
+
     Serial.println("-------------------------------");
   }
   return true;
@@ -292,7 +464,7 @@ void printData(int slot)
 {
   clearScreen();
   tft.setTextColor(WHITE);
-  tft.setTextSize(2);
+  tft.setTextSize(1);
   // drawCentreChar(theWeatherdata[0].time, timeareax+timeareaw/2, timeareay+timeareah/2);
   drawCentreChar(theWeatherdata[slot].time, timeareax+timeareaw/2, timeareay+timeareah/2);
 
@@ -306,6 +478,12 @@ void printData(int slot)
   strcat(all, tempstr);
   strcat(all, degC);
   drawCentreChar(all, tempareax+tempareaw/2, tempareay+tempareah/2);
+
+  if (descrarea){
+      drawCentreChar(theWeatherdata[slot].description, descrareax+descrareaw/2, descrareay);
+      drawCentreChar(theWeatherdata[slot].wind, descrareax+descrareaw/2, descrareay+15);
+
+  }
 
   // tft.fillRect(descrareax,descrareay,descrareaw,descrareah,GREY);
 
@@ -654,7 +832,6 @@ void drawAll()
     delay(1000);
     clearIcon();
 }
-
 
 
 
