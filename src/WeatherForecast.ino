@@ -7,6 +7,9 @@
 
 #include <Wire.h>
 #include <ESP8266WiFi.h>
+#include <DNSServer.h>
+#include <ESP8266WebServer.h>
+#include "WiFiManager.h" 
 #include <ESP8266HTTPClient.h>
 #include <ArduinoJson.h>
 // #include <Adafruit_ST7735.h>
@@ -42,9 +45,7 @@ long nextpoll;
 long nextswitch;
 
 
-const char* ssid     = "YOUR_SSID";                 // SSID of local network
-const char* password = "YOUR_PASSWORD";             // Password on network
-String APIKEY = "YOUR_API_KEY";                     // change to your API Key
+String APIKEY = "fb1d7728528b56504cb6af0aba6c6fbc";                     // change to your API Key
 String CityID = "2885397";                          //change to place of choice
 
 Timezone myTZ;
@@ -139,6 +140,27 @@ Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 static inline unsigned int to_latin9(const unsigned int code);
 size_t utf8_to_latin9(char *const output, const char *const input, const size_t length);
 
+void configModeCallback (WiFiManager *myWiFiManager) {
+  Serial.println("Entered config mode");
+  clearScreen();
+  int y = tft.height()/3;
+  drawCentreChar("No previous SSID found", tft.width()/2, y);
+  drawCentreChar("Please connect to SSID", tft.width()/2, y+20);
+  tft.setFont(&FreeSansBold11pt8b);
+  tft.setCursor(0, y+50);
+  tft.print(myWiFiManager->getConfigPortalSSID());
+  // drawCentreChar(myWiFiManager->getConfigPortalSSID(), tft.width()/2, tft.height()/2+30);
+  tft.setFont(&FreeSans11pt8b);
+  drawCentreChar("and go to IP", tft.width()/2, y+80);
+  // drawCentreChar(WiFi.softAPIP(), tft.width()/2, tft.height()/2+60);
+  tft.setFont(&FreeSansBold11pt8b);
+  tft.setCursor(0, y+120);
+  tft.print(WiFi.softAPIP());
+  Serial.println(WiFi.softAPIP());
+  //if you used auto generated SSID, print it
+  Serial.println(myWiFiManager->getConfigPortalSSID());
+}
+
 
 void setup() {
   Serial.begin(115200);
@@ -151,27 +173,33 @@ void setup() {
   // Init ST7789 240x240
   tft.init(240, 240, SPI_MODE2);
   tft.invertDisplay(true);
-
-
   tft.fillScreen(BLACK);
 
-  Serial.println("Connecting");
-  WiFi.begin(ssid, password);
+
+  WiFiManager wifiManager;
+  //reset settings - for testing
+  // wifiManager.resetSettings();
+  //set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
+  wifiManager.setAPCallback(configModeCallback);
 
   tft.setFont(&FreeSans11pt8b);
   tft.setTextColor(WHITE);
   tft.setTextSize(1);
   drawCentreChar("Connecting...", tft.width()/2, tft.height()/2);
-
+  
+  Serial.println("Connecting");
   Serial.print("display width: ");
   Serial.println(tft.width());
   Serial.print("display height: ");
   Serial.println(tft.height());
 
 
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-  }
+  if(!wifiManager.autoConnect()) {
+    Serial.println("failed to connect and hit timeout");
+    //reset and try again, or maybe put it to deep sleep
+    ESP.reset();
+    delay(1000);
+  } 
 
   drawCentreChar("syncing time...", tft.width()/2, tft.height()/2+15);
   Serial.println("Connected, waiting for timesync...");
