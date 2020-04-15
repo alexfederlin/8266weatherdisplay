@@ -1,4 +1,5 @@
-   //////////////////////////////////////////////
+    //////////////////////////////////////////////
+   //            Based on                      //
   //    Art Deco Weather Forecast Display     //
  //                                          //
 //           http://www.educ8s.tv           //
@@ -41,9 +42,9 @@ long nextpoll;
 long nextswitch;
 
 
-const char* ssid     = "Buschfunk";                 // SSID of local network
-const char* password = "FritzBoxIstTotalSuper";     // Password on network
-String APIKEY = "fb1d7728528b56504cb6af0aba6c6fbc"; // change to your API Key
+const char* ssid     = "YOUR_SSID";                 // SSID of local network
+const char* password = "YOUR_PASSWORD";             // Password on network
+String APIKEY = "YOUR_API_KEY";                     // change to your API Key
 String CityID = "2885397";                          //change to place of choice
 
 Timezone myTZ;
@@ -107,11 +108,9 @@ const int tempareah=35;
 WiFiClient client;
 char servername[]="api.openweathermap.org";  // remote server we will connect to
 
+
+// TODO: currently unused, but needs to be populated based on hour for which forecast is valid
 boolean night = false;
-int  counter = 360;
-String weatherDescription ="";
-String weatherLocation = "";
-float Temperature;
 
 struct weatherdata
 {
@@ -122,17 +121,12 @@ struct weatherdata
   char wind[14]; //270 @ 15 km/h
 };
 
-// typedef struct weatherdata Weatherdata;
-// Weatherdata theWeatherdata;
-
 struct weatherdata theWeatherdata[WEATHERDATA_SIZE];
 int slot = 0;
 
 extern  unsigned char  cloud[];
 extern  unsigned char  thunder[];
 extern  unsigned char  wind[];
-
-
 
 // Init ST7735 80x160
 // Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
@@ -144,7 +138,6 @@ Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 // function declarations
 static inline unsigned int to_latin9(const unsigned int code);
 size_t utf8_to_latin9(char *const output, const char *const input, const size_t length);
-
 
 
 void setup() {
@@ -259,8 +252,9 @@ boolean getWeatherData() //client function to send/receive GET request data.
     strcpy(theWeatherdata[cnt].description, description);
 
     int winddir = root["list"][cnt]["wind"]["deg"];
-    char winddirchar[4];
-    itoa(winddir,winddirchar,10);
+    char winddirchar[3];
+    generateWindDir(winddir, winddirchar);
+    //itoa(winddir,winddirchar,10);
     int windspeed = root["list"][cnt]["wind"]["speed"]; // m/s in metric
     char windspeedchar[4];
     sprintf(windspeedchar,"%.0f",windspeed*3.6);  //convert to km/h
@@ -310,6 +304,17 @@ void generateTimeString(long dt, char *str){
     Serial.println(str);
 }
 
+void generateWindDir(int d, char *winddirchar){
+  if (22  <= d && d < 67) strcpy(winddirchar, "NO");
+  if (67  <= d && d < 112) strcpy(winddirchar, "O");
+  if (112 <= d && d < 157) strcpy(winddirchar, "SO");
+  if (157 <= d && d < 202) strcpy(winddirchar, "S");
+  if (202 <= d && d < 247) strcpy(winddirchar, "SW");
+  if (247 <= d && d < 292) strcpy(winddirchar, "W");
+  if (292 <= d && d < 337) strcpy(winddirchar, "NW");
+  if (337 <= d || d < 22) strcpy(winddirchar, "N");
+}
+
 void printData(int slot)
 {
   clearScreen();
@@ -339,8 +344,9 @@ void printData(int slot)
   tft.setTextSize(1);
   tft.setFont(&FreeSans11pt8b);
   if (descrarea){
-      drawCentreChar(theWeatherdata[slot].description, descrareax+descrareaw/2, descrareay);
-      drawCentreChar(theWeatherdata[slot].wind, descrareax+descrareaw/2, descrareay+20);
+      //the offset to descrareay might have to be changed based on font size used
+      drawCentreChar(theWeatherdata[slot].description, descrareax+descrareaw/2, descrareay+15);
+      drawCentreChar(theWeatherdata[slot].wind, descrareax+descrareaw/2, descrareay+35);
   }
 }
 

@@ -1,7 +1,10 @@
 # Fonts
 In order to get e.g. German "Umlauts" displayed on the display using the Adafruit GFX library,
 you need to supply your own 8bit Font, which actually contains these symbols.
-To create one, you can use the fontconvert utility delivered together with the GFX library.
+
+You can use the ones included here by copying them to the GFX Fonts/ folder.
+
+To create one yourself, you can use the fontconvert utility delivered together with the GFX library.
 
 fontconvert is in .pio/libdeps/nodemcuv2/Adafruit GFX Library_ID13/fontconvert
 
