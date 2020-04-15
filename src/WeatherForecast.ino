@@ -11,7 +11,8 @@
 // #include <Adafruit_ST7735.h>
 #include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
 #include <Adafruit_GFX.h>
-#include <Fonts/FreeMono11pt8b.h>
+#include <Fonts/FreeSans11pt8b.h>
+#include <Fonts/FreeSansBold11pt8b.h>
 #include <ezTime.h>
 
 // Color definitions
@@ -40,10 +41,11 @@ long nextpoll;
 long nextswitch;
 
 
-const char* ssid     = "Buschfunk";      // SSID of local network
-const char* password = "FritzBoxIstTotalSuper";   // Password on network
-String APIKEY = "fb1d7728528b56504cb6af0aba6c6fbc";
-String CityID = "2885397"; //Sparta, Greece
+const char* ssid     = "Buschfunk";                 // SSID of local network
+const char* password = "FritzBoxIstTotalSuper";     // Password on network
+String APIKEY = "fb1d7728528b56504cb6af0aba6c6fbc"; // change to your API Key
+String CityID = "2885397";                          //change to place of choice
+
 Timezone myTZ;
 
 //bitmap width and height
@@ -102,11 +104,6 @@ const int tempareaw=240;
 const int tempareah=35;
 
 
-  int TESTCOUNTER=-1;
-  const int TESTARR[]= {800, 801, 802, 803, 804, 200,300,500,511,520,521,522,531,600,601,602,611,612,615,616,620,621,622,701};
-  const int TESTARRSIZE = sizeof(TESTARR)/sizeof(TESTARR[0]);
-
-
 WiFiClient client;
 char servername[]="api.openweathermap.org";  // remote server we will connect to
 
@@ -144,145 +141,9 @@ extern  unsigned char  wind[];
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
 
-/* UTF-8 to ISO-8859-1/ISO-8859-15 mapper.
- * Return 0..255 for valid ISO-8859-15 code points, 256 otherwise.
-*/
-static inline unsigned int to_latin9(const unsigned int code)
-{
-    /* Code points 0 to U+00FF are the same in both. */
-    if (code < 256U)
-        return code;
-    switch (code) {
-    case 0x0152U: return 188U; /* U+0152 = 0xBC: OE ligature */
-    case 0x0153U: return 189U; /* U+0153 = 0xBD: oe ligature */
-    case 0x0160U: return 166U; /* U+0160 = 0xA6: S with caron */
-    case 0x0161U: return 168U; /* U+0161 = 0xA8: s with caron */
-    case 0x0178U: return 190U; /* U+0178 = 0xBE: Y with diaresis */
-    case 0x017DU: return 180U; /* U+017D = 0xB4: Z with caron */
-    case 0x017EU: return 184U; /* U+017E = 0xB8: z with caron */
-    case 0x20ACU: return 164U; /* U+20AC = 0xA4: Euro */
-    default:      return 256U;
-    }
-}
-
-/* Convert an UTF-8 string to ISO-8859-15.
- * All invalid sequences are ignored.
- * Note: output == input is allowed,
- * but   input < output < input + length
- * is not.
- * Output has to have room for (length+1) chars, including the trailing NUL byte.
-*/
-size_t utf8_to_latin9(char *const output, const char *const input, const size_t length)
-{
-    unsigned char             *out = (unsigned char *)output;
-    const unsigned char       *in  = (const unsigned char *)input;
-    const unsigned char *const end = (const unsigned char *)input + length;
-    unsigned int               c;
-
-    while (in < end)
-        if (*in < 128)
-            *(out++) = *(in++); /* Valid codepoint */
-        else
-        if (*in < 192)
-            in++;               /* 10000000 .. 10111111 are invalid */
-        else
-        if (*in < 224) {        /* 110xxxxx 10xxxxxx */
-            if (in + 1 >= end)
-                break;
-            if ((in[1] & 192U) == 128U) {
-                c = to_latin9( (((unsigned int)(in[0] & 0x1FU)) << 6U)
-                             |  ((unsigned int)(in[1] & 0x3FU)) );
-                if (c < 256)
-                    *(out++) = c;
-            }
-            in += 2;
-
-        } else
-        if (*in < 240) {        /* 1110xxxx 10xxxxxx 10xxxxxx */
-            if (in + 2 >= end)
-                break;
-            if ((in[1] & 192U) == 128U &&
-                (in[2] & 192U) == 128U) {
-                c = to_latin9( (((unsigned int)(in[0] & 0x0FU)) << 12U)
-                             | (((unsigned int)(in[1] & 0x3FU)) << 6U)
-                             |  ((unsigned int)(in[2] & 0x3FU)) );
-                if (c < 256)
-                    *(out++) = c;
-            }
-            in += 3;
-
-        } else
-        if (*in < 248) {        /* 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx */
-            if (in + 3 >= end)
-                break;
-            if ((in[1] & 192U) == 128U &&
-                (in[2] & 192U) == 128U &&
-                (in[3] & 192U) == 128U) {
-                c = to_latin9( (((unsigned int)(in[0] & 0x07U)) << 18U)
-                             | (((unsigned int)(in[1] & 0x3FU)) << 12U)
-                             | (((unsigned int)(in[2] & 0x3FU)) << 6U)
-                             |  ((unsigned int)(in[3] & 0x3FU)) );
-                if (c < 256)
-                    *(out++) = c;
-            }
-            in += 4;
-
-        } else
-        if (*in < 252) {        /* 111110xx 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx */
-            if (in + 4 >= end)
-                break;
-            if ((in[1] & 192U) == 128U &&
-                (in[2] & 192U) == 128U &&
-                (in[3] & 192U) == 128U &&
-                (in[4] & 192U) == 128U) {
-                c = to_latin9( (((unsigned int)(in[0] & 0x03U)) << 24U)
-                             | (((unsigned int)(in[1] & 0x3FU)) << 18U)
-                             | (((unsigned int)(in[2] & 0x3FU)) << 12U)
-                             | (((unsigned int)(in[3] & 0x3FU)) << 6U)
-                             |  ((unsigned int)(in[4] & 0x3FU)) );
-                if (c < 256)
-                    *(out++) = c;
-            }
-            in += 5;
-
-        } else
-        if (*in < 254) {        /* 1111110x 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx */
-            if (in + 5 >= end)
-                break;
-            if ((in[1] & 192U) == 128U &&
-                (in[2] & 192U) == 128U &&
-                (in[3] & 192U) == 128U &&
-                (in[4] & 192U) == 128U &&
-                (in[5] & 192U) == 128U) {
-                c = to_latin9( (((unsigned int)(in[0] & 0x01U)) << 30U)
-                             | (((unsigned int)(in[1] & 0x3FU)) << 24U)
-                             | (((unsigned int)(in[2] & 0x3FU)) << 18U)
-                             | (((unsigned int)(in[3] & 0x3FU)) << 12U)
-                             | (((unsigned int)(in[4] & 0x3FU)) << 6U)
-                             |  ((unsigned int)(in[5] & 0x3FU)) );
-                if (c < 256)
-                    *(out++) = c;
-            }
-            in += 6;
-
-        } else
-            in++;               /* 11111110 and 11111111 are invalid */
-
-    /* Terminate the output string. */
-    *out = '\0';
-
-    return (size_t)(out - (unsigned char *)output);
-}
-
-
-
-
-
-
-
-
-
-
+// function declarations
+static inline unsigned int to_latin9(const unsigned int code);
+size_t utf8_to_latin9(char *const output, const char *const input, const size_t length);
 
 
 
@@ -304,7 +165,7 @@ void setup() {
   Serial.println("Connecting");
   WiFi.begin(ssid, password);
 
-  tft.setFont(&FreeMono11pt8b);
+  tft.setFont(&FreeSans11pt8b);
   tft.setTextColor(WHITE);
   tft.setTextSize(1);
   drawCentreChar("Connecting...", tft.width()/2, tft.height()/2);
@@ -316,10 +177,14 @@ void setup() {
 
 
   while (WiFi.status() != WL_CONNECTED) {
-  delay(500);
+    delay(500);
   }
+
+  drawCentreChar("syncing time...", tft.width()/2, tft.height()/2+15);
   Serial.println("Connected, waiting for timesync...");
   waitForSync();
+  drawCentreChar("getting weather...", tft.width()/2, tft.height()/2+30);
+
   Serial.println("UTC:             " + UTC.dateTime());
   myTZ.setLocation(F("de"));
   myTZ.setDefault();
@@ -330,12 +195,6 @@ void setup() {
 }
 
 void loop() {
-
-  // if (TESTCOUNTER<(TESTARRSIZE-1))
-  //   TESTCOUNTER++;
-  // else
-  //   TESTCOUNTER = 0;
-  
 
   //Get new data every 30 minutes
   if(now() > nextpoll ){
@@ -367,12 +226,8 @@ boolean getWeatherData() //client function to send/receive GET request data.
 
   HTTPClient http;
   http.useHTTP10(true);
-
   http.begin(client, "http://api.openweathermap.org/data/2.5/forecast?id="+CityID+"&units=metric&cnt=8&APPID="+APIKEY+"&lang=de");
-  
   http.GET();
-
-  // StaticJsonDocument<1024> root;
 
   // for testing purposes
   // char result[]="{\"cod\":\"200\",\"message\":0,\"cnt\":1,\"list\":[{\"dt\":1586034000,\"main\":{\"temp\":37.1,\"feels_like\":2.87,\"temp_min\":7.1,\"temp_max\":7.71,\"pressure\":1025,\"sea_level\":1025,\"grnd_level\":1019,\"humidity\":61,\"temp_kf\":-0.61},\"weather\":[{\"id\":800,\"main\":\"Clear\",\"description\":\"clear sky\",\"icon\":\"01n\"}],\"clouds\":{\"all\":0},\"wind\":{\"speed\":3.23,\"deg\":126},\"sys\":{\"pod\":\"n\"},\"dt_txt\":\"2020-04-04 21:00:00\"}],\"city\":{\"id\":2885397,\"name\":\"Korschenbroich\",\"coord\":{\"lat\":51.1914,\"lon\":6.5135},\"country\":\"DE\",\"timezone\":7200,\"sunrise\":1585976515,\"sunset\":1586023881}}";
@@ -393,16 +248,13 @@ boolean getWeatherData() //client function to send/receive GET request data.
   for (int cnt=0;cnt<WEATHERDATA_SIZE; cnt++){
     theWeatherdata[cnt].temp = root["list"][cnt]["main"]["temp"];
     theWeatherdata[cnt].weatherID = root["list"][cnt]["weather"][0]["id"];
-    // dateTime(myTZ.tzTime(root["list"][cnt]["dt"], UTC_TIME), "H:i").toCharArray(theWeatherdata[cnt].time,6);
 
-    //theWeatherdata[cnt].time = root["list"][cnt]["dt"];
     generateTimeString(root["list"][cnt]["dt"], theWeatherdata[cnt].time);
 
-    // const char* description;
-    // description = root["list"][cnt]["weather"][0]["description"];
-    // const char* description = "Überwiegend bewölkt";
-    char description [30] = "Überwiegend bewölkt";
-    //utf8_to_latin9 (description, theWeatherdata[cnt].description, 20);
+    const char* desc;
+    desc = root["list"][cnt]["weather"][0]["description"];
+    char description [30];
+    strcpy(description, desc);
     utf8_to_latin9 (description, description, 20);
     strcpy(theWeatherdata[cnt].description, description);
 
@@ -411,7 +263,7 @@ boolean getWeatherData() //client function to send/receive GET request data.
     itoa(winddir,winddirchar,10);
     int windspeed = root["list"][cnt]["wind"]["speed"]; // m/s in metric
     char windspeedchar[4];
-    sprintf(windspeedchar,"%3.0f",windspeed*3.6);
+    sprintf(windspeedchar,"%.0f",windspeed*3.6);  //convert to km/h
     strcpy(theWeatherdata[cnt].wind, winddirchar);
     strcat(theWeatherdata[cnt].wind, "@");
     strcat(theWeatherdata[cnt].wind, windspeedchar);
@@ -426,16 +278,13 @@ boolean getWeatherData() //client function to send/receive GET request data.
     Serial.print("weatherid: ");
     Serial.println(theWeatherdata[cnt].weatherID);
     Serial.print("description: ");
-    Serial.println(theWeatherdata[cnt].description);
+    Serial.println(desc);
     Serial.print("wind: ");
     Serial.println(theWeatherdata[cnt].wind);
-
     Serial.println("-------------------------------");
   }
   return true;
 }
-
-
 
 // we can't just use myTZ.hour(dt) because ezTime is broken:
 // https://github.com/ropg/ezTime/issues/10
@@ -446,6 +295,7 @@ void generateTimeString(long dt, char *str){
     Serial.println(dt);
 
 // this comparison is also broken. It will switch days only on midnight, UTC
+// since the issue is only visible for me between midnight and 2 in the morning, I'll leave it for now
     if (UTC.day() == UTC.day(dt)){
       strcpy(str, "Heute, ");
     }
@@ -464,37 +314,34 @@ void printData(int slot)
 {
   clearScreen();
   tft.setTextColor(WHITE);
-  tft.setTextSize(1);
+  tft.setFont(&FreeSansBold11pt8b);
+
   // drawCentreChar(theWeatherdata[0].time, timeareax+timeareaw/2, timeareay+timeareah/2);
   drawCentreChar(theWeatherdata[slot].time, timeareax+timeareaw/2, timeareay+timeareah/2);
 
   // printWeatherIcon(theWeatherdata[0].weatherID);
   printWeatherIcon(theWeatherdata[slot].weatherID);
 
-  char degC[3] = " C";
+
+// this only works if this file is encoded in 8859-1
+// if this source file is saved UTF encoded, the compiler will complain 
+// that the array is too small. in UTF8 encoding the degree symbol
+// requires two characters
+  char degC[3] = "�C";
   char tempstr[6];
   char all[9] = "";
   dtostrf(theWeatherdata[slot].temp,2,1, tempstr);
   strcat(all, tempstr);
   strcat(all, degC);
-  drawCentreChar(all, tempareax+tempareaw/2, tempareay+tempareah/2);
 
+  tft.setTextSize(2);
+  drawCentreChar(all, tempareax+tempareaw/2, tempareay+tempareah/2);
+  tft.setTextSize(1);
+  tft.setFont(&FreeSans11pt8b);
   if (descrarea){
       drawCentreChar(theWeatherdata[slot].description, descrareax+descrareaw/2, descrareay);
-      drawCentreChar(theWeatherdata[slot].wind, descrareax+descrareaw/2, descrareay+15);
-
+      drawCentreChar(theWeatherdata[slot].wind, descrareax+descrareaw/2, descrareay+20);
   }
-
-  // tft.fillRect(descrareax,descrareay,descrareaw,descrareah,GREY);
-
-  // tft.setCursor(55,130);
-  // tft.setTextColor(WHITE);
-  // tft.setTextSize(1);
-  // tft.print("o");
-  // tft.setCursor(60,132);
-  // tft.setTextColor(WHITE);
-  // tft.setTextSize(2);
-  // tft.print("°C");
 }
 
 void drawCentreChar(const char *buf, int x, int y)
@@ -762,6 +609,8 @@ void clearIcon()
      tft.fillRect(iconareacx,iconareay,bmpw,bmph,BLACK);
 }
 
+
+// For testing purposes
 void drawAll()
 {
     drawTheSun();
@@ -834,4 +683,133 @@ void drawAll()
 }
 
 
+/* UTF-8 to ISO-8859-1/ISO-8859-15 mapper.
+ * Return 0..255 for valid ISO-8859-15 code points, 256 otherwise.
+*/
+static inline unsigned int to_latin9(const unsigned int code)
+{
+    /* Code points 0 to U+00FF are the same in both. */
+    if (code < 256U)
+        return code;
+    switch (code) {
+    case 0x0152U: return 188U; /* U+0152 = 0xBC: OE ligature */
+    case 0x0153U: return 189U; /* U+0153 = 0xBD: oe ligature */
+    case 0x0160U: return 166U; /* U+0160 = 0xA6: S with caron */
+    case 0x0161U: return 168U; /* U+0161 = 0xA8: s with caron */
+    case 0x0178U: return 190U; /* U+0178 = 0xBE: Y with diaresis */
+    case 0x017DU: return 180U; /* U+017D = 0xB4: Z with caron */
+    case 0x017EU: return 184U; /* U+017E = 0xB8: z with caron */
+    case 0x20ACU: return 164U; /* U+20AC = 0xA4: Euro */
+    default:      return 256U;
+    }
+}
+
+/* Convert an UTF-8 string to ISO-8859-15.
+ * All invalid sequences are ignored.
+ * Note: output == input is allowed,
+ * but   input < output < input + length
+ * is not.
+ * Output has to have room for (length+1) chars, including the trailing NUL byte.
+*/
+size_t utf8_to_latin9(char *const output, const char *const input, const size_t length)
+{
+    unsigned char             *out = (unsigned char *)output;
+    const unsigned char       *in  = (const unsigned char *)input;
+    const unsigned char *const end = (const unsigned char *)input + length;
+    unsigned int               c;
+
+    while (in < end)
+        if (*in < 128)
+            *(out++) = *(in++); /* Valid codepoint */
+        else
+        if (*in < 192)
+            in++;               /* 10000000 .. 10111111 are invalid */
+        else
+        if (*in < 224) {        /* 110xxxxx 10xxxxxx */
+            if (in + 1 >= end)
+                break;
+            if ((in[1] & 192U) == 128U) {
+                c = to_latin9( (((unsigned int)(in[0] & 0x1FU)) << 6U)
+                             |  ((unsigned int)(in[1] & 0x3FU)) );
+                if (c < 256)
+                    *(out++) = c;
+            }
+            in += 2;
+
+        } else
+        if (*in < 240) {        /* 1110xxxx 10xxxxxx 10xxxxxx */
+            if (in + 2 >= end)
+                break;
+            if ((in[1] & 192U) == 128U &&
+                (in[2] & 192U) == 128U) {
+                c = to_latin9( (((unsigned int)(in[0] & 0x0FU)) << 12U)
+                             | (((unsigned int)(in[1] & 0x3FU)) << 6U)
+                             |  ((unsigned int)(in[2] & 0x3FU)) );
+                if (c < 256)
+                    *(out++) = c;
+            }
+            in += 3;
+
+        } else
+        if (*in < 248) {        /* 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx */
+            if (in + 3 >= end)
+                break;
+            if ((in[1] & 192U) == 128U &&
+                (in[2] & 192U) == 128U &&
+                (in[3] & 192U) == 128U) {
+                c = to_latin9( (((unsigned int)(in[0] & 0x07U)) << 18U)
+                             | (((unsigned int)(in[1] & 0x3FU)) << 12U)
+                             | (((unsigned int)(in[2] & 0x3FU)) << 6U)
+                             |  ((unsigned int)(in[3] & 0x3FU)) );
+                if (c < 256)
+                    *(out++) = c;
+            }
+            in += 4;
+
+        } else
+        if (*in < 252) {        /* 111110xx 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx */
+            if (in + 4 >= end)
+                break;
+            if ((in[1] & 192U) == 128U &&
+                (in[2] & 192U) == 128U &&
+                (in[3] & 192U) == 128U &&
+                (in[4] & 192U) == 128U) {
+                c = to_latin9( (((unsigned int)(in[0] & 0x03U)) << 24U)
+                             | (((unsigned int)(in[1] & 0x3FU)) << 18U)
+                             | (((unsigned int)(in[2] & 0x3FU)) << 12U)
+                             | (((unsigned int)(in[3] & 0x3FU)) << 6U)
+                             |  ((unsigned int)(in[4] & 0x3FU)) );
+                if (c < 256)
+                    *(out++) = c;
+            }
+            in += 5;
+
+        } else
+        if (*in < 254) {        /* 1111110x 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx */
+            if (in + 5 >= end)
+                break;
+            if ((in[1] & 192U) == 128U &&
+                (in[2] & 192U) == 128U &&
+                (in[3] & 192U) == 128U &&
+                (in[4] & 192U) == 128U &&
+                (in[5] & 192U) == 128U) {
+                c = to_latin9( (((unsigned int)(in[0] & 0x01U)) << 30U)
+                             | (((unsigned int)(in[1] & 0x3FU)) << 24U)
+                             | (((unsigned int)(in[2] & 0x3FU)) << 18U)
+                             | (((unsigned int)(in[3] & 0x3FU)) << 12U)
+                             | (((unsigned int)(in[4] & 0x3FU)) << 6U)
+                             |  ((unsigned int)(in[5] & 0x3FU)) );
+                if (c < 256)
+                    *(out++) = c;
+            }
+            in += 6;
+
+        } else
+            in++;               /* 11111110 and 11111111 are invalid */
+
+    /* Terminate the output string. */
+    *out = '\0';
+
+    return (size_t)(out - (unsigned char *)output);
+}
 
