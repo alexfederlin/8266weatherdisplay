@@ -1,6 +1,9 @@
     //////////////////////////////////////////////
    //            Based on                      //
   //    Art Deco Weather Forecast Display     //
+ //  
+// Rotary encoder handling adapted from 
+//  http://www.buxtronix.net/2011/10/rotary-encoders-done-properly.html
  //                                          //
 //           http://www.educ8s.tv           //
 /////////////////////////////////////////////
@@ -105,10 +108,14 @@ const int tempareay=205;
 const int tempareaw=240;
 const int tempareah=35;
 
+// Init ST7735 80x160
+// Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
+
+  // Init ST7789 240x240
+Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+
 
 WiFiClient client;
-char servername[]="api.openweathermap.org";  // remote server we will connect to
-
 
 // TODO: currently unused, but needs to be populated based on hour for which forecast is valid
 boolean night = false;
@@ -129,37 +136,66 @@ extern  unsigned char  cloud[];
 extern  unsigned char  thunder[];
 extern  unsigned char  wind[];
 
-// Init ST7735 80x160
-// Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
+///////////// Rotary stuff
 
-  // Init ST7789 240x240
-Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+#define DIR_NONE 0x00           // No complete step yet.
+#define DIR_CW   0x10           // Clockwise step.
+#define DIR_CCW  0x20           // Anti-clockwise step.
+
+unsigned int state;
+unsigned int A = 5;             // pins connected to the encoder (digital_pin 2)
+unsigned int B = 12;             //              "                (digital_pin 3)
+         int count = 0;         // count each indent
+         int old_count = 0;     // check for count changed
+
+
+/*
+ * The below state table has, for each state (row), the new state
+ * to set based on the next encoder output. From left to right in,
+ * the table, the encoder outputs are 00, 01, 10, 11, and the value
+ * in that position is the new state to set.
+ */
+
+// State definitions state table (emits a code at 00 only)
+// states are: (NAB) N = 0: clockwise;  N = 1: counterclockwiswe
+#define R_START     0x3
+#define R_CW_BEGIN  0x1
+#define R_CW_NEXT   0x0
+#define R_CW_FINAL  0x2
+#define R_CCW_BEGIN 0x6
+#define R_CCW_NEXT  0x4
+#define R_CCW_FINAL 0x5
+
+const unsigned char ttable[8][4] = {
+    {R_CW_NEXT,  R_CW_BEGIN,  R_CW_FINAL,  R_START},                // R_CW_NEXT
+    {R_CW_NEXT,  R_CW_BEGIN,  R_CW_BEGIN,  R_START},                // R_CW_BEGIN
+    {R_CW_NEXT,  R_CW_FINAL,  R_CW_FINAL,  R_START | DIR_CW},       // R_CW_FINAL
+    {R_START,    R_CW_BEGIN,  R_CCW_BEGIN, R_START},                // R_START
+    {R_CCW_NEXT, R_CCW_FINAL, R_CCW_BEGIN, R_START},                // R_CCW_NEXT
+    {R_CCW_NEXT, R_CCW_FINAL, R_CCW_FINAL, R_START | DIR_CCW},      // R_CCW_FINAL
+    {R_CCW_NEXT, R_CCW_BEGIN, R_CCW_BEGIN, R_START},                // R_CCW_BEGIN
+    {R_START,    R_START,     R_START,     R_START}                 // ILLEGAL
+};
+
+
+void ICACHE_RAM_ATTR AB_isr( ) {
+    // Grab state of input pins.
+    unsigned char pinstate = (digitalRead( A ) << 1) | digitalRead( B );
+
+    // Determine new state from the pins and state table.
+    state = ttable[state & 0x07][pinstate];
+
+    if( state & DIR_CW )    count++;
+    if( state & DIR_CCW )   count--;
+}
+
 
 
 // function declarations
 static inline unsigned int to_latin9(const unsigned int code);
 size_t utf8_to_latin9(char *const output, const char *const input, const size_t length);
+void configModeCallback (WiFiManager *myWiFiManager);
 
-void configModeCallback (WiFiManager *myWiFiManager) {
-  Serial.println("Entered config mode");
-  clearScreen();
-  int y = tft.height()/3;
-  drawCentreChar("No previous SSID found", tft.width()/2, y);
-  drawCentreChar("Please connect to SSID", tft.width()/2, y+20);
-  tft.setFont(&FreeSansBold11pt8b);
-  tft.setCursor(0, y+50);
-  tft.print(myWiFiManager->getConfigPortalSSID());
-  // drawCentreChar(myWiFiManager->getConfigPortalSSID(), tft.width()/2, tft.height()/2+30);
-  tft.setFont(&FreeSans11pt8b);
-  drawCentreChar("and go to IP", tft.width()/2, y+80);
-  // drawCentreChar(WiFi.softAPIP(), tft.width()/2, tft.height()/2+60);
-  tft.setFont(&FreeSansBold11pt8b);
-  tft.setCursor(0, y+120);
-  tft.print(WiFi.softAPIP());
-  Serial.println(WiFi.softAPIP());
-  //if you used auto generated SSID, print it
-  Serial.println(myWiFiManager->getConfigPortalSSID());
-}
 
 
 void setup() {
@@ -213,6 +249,18 @@ void setup() {
   Serial.println(myTZ.dateTime());
   nextpoll = now();
   nextswitch = now()+10;
+
+// Rotary stuff
+    pinMode( A, INPUT_PULLUP );
+    pinMode( B, INPUT_PULLUP );
+
+    attachInterrupt( digitalPinToInterrupt(A), AB_isr, CHANGE );   // pin-change interrupts: 
+    attachInterrupt( digitalPinToInterrupt(B), AB_isr, CHANGE );
+
+
+    state = (digitalRead( A ) << 1) | digitalRead( B );     // Initialise state.
+    old_count = 0;
+
 }
 
 void loop() {
@@ -228,15 +276,24 @@ void loop() {
     }
   }
 
-  if (now() >= nextswitch){
-    nextswitch = now()+5;
-    if (slot<WEATHERDATA_SIZE-1) slot++;
-    else slot=0;
-    Serial.print("MARK ");
-    Serial.print(slot);
-    Serial.print(": ");
-    Serial.println(now());
-    printData(slot);
+  // if (now() >= nextswitch){
+  //   nextswitch = now()+5;
+  //   if (slot<WEATHERDATA_SIZE-1) slot++;
+  //   else slot=0;
+  //   Serial.print("MARK ");
+  //   Serial.print(slot);
+  //   Serial.print(": ");
+  //   Serial.println(now());
+  //   printData(slot);
+  // }
+
+  if( old_count != count ) {
+    if (count>WEATHERDATA_SIZE-1) count = 0;
+    if (count<0) count = WEATHERDATA_SIZE-1;
+    Serial.println( count );
+
+    old_count = count;
+    printData(count);
   }
   
 
@@ -351,6 +408,7 @@ void printData(int slot)
 
   // drawCentreChar(theWeatherdata[0].time, timeareax+timeareaw/2, timeareay+timeareah/2);
   drawCentreChar(theWeatherdata[slot].time, timeareax+timeareaw/2, timeareay+timeareah/2);
+  drawTimeBar(slot);
 
   // printWeatherIcon(theWeatherdata[0].weatherID);
   printWeatherIcon(theWeatherdata[slot].weatherID);
@@ -386,6 +444,17 @@ void drawCentreChar(const char *buf, int x, int y)
     tft.getTextBounds(buf, 0, y, &x1, &y1, &w, &h); //calc width of new string
     tft.setCursor(x - w / 2, y);
     tft.print(buf);
+}
+
+void drawTimeBar(int slot){
+  int barh=5;
+  int barw = timeareaw/WEATHERDATA_SIZE;
+  int bary = timeareay+timeareah-barh;
+  tft.fillRect(timeareax, bary, timeareaw, barh, BLACK);
+  for (int i=0; i<WEATHERDATA_SIZE; i++){
+    if (slot==i) tft.fillRect(timeareax+(barw*slot), bary, barw, barh, WHITE);
+    else tft.drawRect(timeareax+(barw*slot), bary, barw, barh, WHITE);
+  }
 }
 
 // see https://openweathermap.org/weather-conditions
@@ -845,5 +914,26 @@ size_t utf8_to_latin9(char *const output, const char *const input, const size_t 
     *out = '\0';
 
     return (size_t)(out - (unsigned char *)output);
+}
+
+void configModeCallback (WiFiManager *myWiFiManager) {
+  Serial.println("Entered config mode");
+  clearScreen();
+  int y = tft.height()/3;
+  drawCentreChar("No previous SSID found", tft.width()/2, y);
+  drawCentreChar("Please connect to SSID", tft.width()/2, y+20);
+  tft.setFont(&FreeSansBold11pt8b);
+  tft.setCursor(0, y+50);
+  tft.print(myWiFiManager->getConfigPortalSSID());
+  // drawCentreChar(myWiFiManager->getConfigPortalSSID(), tft.width()/2, tft.height()/2+30);
+  tft.setFont(&FreeSans11pt8b);
+  drawCentreChar("and go to IP", tft.width()/2, y+80);
+  // drawCentreChar(WiFi.softAPIP(), tft.width()/2, tft.height()/2+60);
+  tft.setFont(&FreeSansBold11pt8b);
+  tft.setCursor(0, y+120);
+  tft.print(WiFi.softAPIP());
+  Serial.println(WiFi.softAPIP());
+  //if you used auto generated SSID, print it
+  Serial.println(myWiFiManager->getConfigPortalSSID());
 }
 
