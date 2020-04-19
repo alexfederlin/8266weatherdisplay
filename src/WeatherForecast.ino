@@ -37,6 +37,11 @@
 #define TFT_DC   4   
 #define TFT_RST  2 
 
+/* define ROTARY if you want to have support for a rotary encoder to switch through the screens.
+   Else, the screen will be advanced every 5 seconds */
+
+const int SWITCHINTERVAL = 5;
+
 // the two next lines must be changed together
 // WEATHERDATA_SIZE defines how many forecast elements are fetched from openweathermaps
 // weatherJSONsize was created using https://arduinojson.org/v6/assistant/ for this particular number
@@ -48,7 +53,7 @@ long nextpoll;
 long nextswitch;
 
 
-String APIKEY = "fb1d7728528b56504cb6af0aba6c6fbc";                     // change to your API Key
+String APIKEY = "API_KEY"; // change to your API Key
 String CityID = "2885397";                          //change to place of choice
 
 Timezone myTZ;
@@ -260,7 +265,6 @@ void setup() {
 
     state = (digitalRead( A ) << 1) | digitalRead( B );     // Initialise state.
     old_count = 0;
-
 }
 
 void loop() {
@@ -276,17 +280,6 @@ void loop() {
     }
   }
 
-  // if (now() >= nextswitch){
-  //   nextswitch = now()+5;
-  //   if (slot<WEATHERDATA_SIZE-1) slot++;
-  //   else slot=0;
-  //   Serial.print("MARK ");
-  //   Serial.print(slot);
-  //   Serial.print(": ");
-  //   Serial.println(now());
-  //   printData(slot);
-  // }
-
   if( old_count != count ) {
     if (count>WEATHERDATA_SIZE-1) count = 0;
     if (count<0) count = WEATHERDATA_SIZE-1;
@@ -295,8 +288,17 @@ void loop() {
     old_count = count;
     printData(count);
   }
-  
 
+  // if (now() >= nextswitch){
+  //   nextswitch = now()+SWITCHINTERVAL;
+  //   if (slot<WEATHERDATA_SIZE-1) slot++;
+  //   else slot=0;
+  //   Serial.print("MARK ");
+  //   Serial.print(slot);
+  //   Serial.print(": ");
+  //   Serial.println(now());
+  //   printData(slot);
+  // }
 }
 
 boolean getWeatherData() //client function to send/receive GET request data.
