@@ -13,3 +13,4 @@ I improved it in a couple of ways:
 - in fact, I made it an array of struct, to store the weather information of the next 24 hours and flip through them
 - got rid of the busy waiting in the loop(). I'm looking to add functionality like flipping through the pages using a button or rotary encoder
 - included the ezTime library for dealing with timezones more easily
+- included support for a rotary encoder to flip through the 8 pages of forecast manually
