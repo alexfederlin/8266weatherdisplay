@@ -46,7 +46,7 @@ const int SWITCHINTERVAL = 5;
 // WEATHERDATA_SIZE defines how many forecast elements are fetched from openweathermaps
 // weatherJSONsize was created using https://arduinojson.org/v6/assistant/ for this particular number
 #define WEATHERDATA_SIZE 8
-const size_t weatherJSONsize = 8*JSON_ARRAY_SIZE(1) + JSON_ARRAY_SIZE(8) + 16*JSON_OBJECT_SIZE(1) + 9*JSON_OBJECT_SIZE(2) + 8*JSON_OBJECT_SIZE(4) + JSON_OBJECT_SIZE(5) + 9*JSON_OBJECT_SIZE(7) + 8*JSON_OBJECT_SIZE(9) + 2000;
+const size_t weatherJSONsize = 8*JSON_ARRAY_SIZE(1) + JSON_ARRAY_SIZE(8) + 16*JSON_OBJECT_SIZE(1) + 9*JSON_OBJECT_SIZE(2) + 8*JSON_OBJECT_SIZE(4) + JSON_OBJECT_SIZE(5) + 9*JSON_OBJECT_SIZE(7) + 6*JSON_OBJECT_SIZE(8) + 8*JSON_OBJECT_SIZE(9) + 2000;
 DynamicJsonDocument root(weatherJSONsize);
 
 long nextpoll;
