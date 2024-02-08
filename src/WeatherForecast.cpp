@@ -54,7 +54,7 @@ long nextpoll;
 long nextswitch;
 
 
-String APIKEY = "APIKEY"; // change to your API Key
+//String APIKEY = "APIKEY"; // change to your API Key
 String CityID = "2885397";                          //change to place of choice
 
 Timezone myTZ;
@@ -867,7 +867,16 @@ void printData(int slot)
   }
 }
 
-
+void printNetworkConfig(){
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+  Serial.print("Subnetmask: ");
+  Serial.println(WiFi.subnetMask());
+  Serial.print("Default GW: ");
+  Serial.println(WiFi.gatewayIP());
+  Serial.print("DNS Server: ");
+  Serial.println(WiFi.dnsIP());
+}
 
 void setup() {
   Serial.begin(115200);
@@ -910,7 +919,24 @@ void setup() {
 
   clearScreen();
   // we should have a ping check whether pool.ntp.org is available. If not, we should disconnect from the wifi and go back into AP Mode
-//  WiFi.disconnect();
+  IPAddress ip;
+  printNetworkConfig();
+  if (WiFi.hostByName("pool.ntp.org", ip)){
+    Serial.println("Connected, DNS resolution worked...");
+  }
+  else {
+    Serial.println("DNS resolution of pool.ntp.org failed");
+    printNetworkConfig();
+    clearScreen();
+    drawCentreChar("connection failed...", tft.width()/2, tft.height()/2+30);
+    drawCentreChar("Connected to internet?", tft.width()/2, tft.height()/2+60);
+    WiFi.disconnect();
+    wifiManager.resetSettings();
+    drawAll();
+    ESP.reset();
+    delay(1000);
+  }
+
 
   drawCentreChar("syncing time...", tft.width()/2, tft.height()/2+15);
   Serial.println("Connected, waiting for timesync...");
