@@ -7,6 +7,7 @@
  //                                          //
 //           http://www.educ8s.tv           //
 /////////////////////////////////////////////
+#include <Arduino.h>
 
 #include <Wire.h>
 #include <ESP8266WiFi.h>
@@ -18,8 +19,8 @@
 // #include <Adafruit_ST7735.h>
 #include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
 #include <Adafruit_GFX.h>
-#include <Fonts/FreeSans11pt8b.h>
-#include <Fonts/FreeSansBold11pt8b.h>
+#include <FreeSans11pt8b.h>
+#include <FreeSansBold11pt8b.h>
 #include <ezTime.h>
 
 // Color definitions
@@ -53,7 +54,8 @@ long nextpoll;
 long nextswitch;
 
 
-String APIKEY = "API_KEY"; // change to your API Key
+String APIKEY = "fb1d7728528b56504cb6af0aba6c6fbc"; // change to your API Key
+//String APIKEY = "APIKEY"; // change to your API Key
 String CityID = "2885397";                          //change to place of choice
 
 Timezone myTZ;
@@ -202,171 +204,6 @@ size_t utf8_to_latin9(char *const output, const char *const input, const size_t 
 void configModeCallback (WiFiManager *myWiFiManager);
 
 
-
-void setup() {
-  Serial.begin(115200);
-
-  // Init ST7735 80x160
-  // tft.initR(INITR_GREENTAB);
-  // tft.setRotation(ST7735_MADCTL_BGR);
-  // tft.invertDisplay(true);
-
-  // Init ST7789 240x240
-  tft.init(240, 240, SPI_MODE2);
-  tft.invertDisplay(true);
-  tft.fillScreen(BLACK);
-
-
-  WiFiManager wifiManager;
-  //reset settings - for testing
-  // wifiManager.resetSettings();
-  //set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
-  wifiManager.setAPCallback(configModeCallback);
-
-  tft.setFont(&FreeSans11pt8b);
-  tft.setTextColor(WHITE);
-  tft.setTextSize(1);
-  drawCentreChar("Connecting...", tft.width()/2, tft.height()/2);
-  
-  Serial.println("Connecting");
-  Serial.print("display width: ");
-  Serial.println(tft.width());
-  Serial.print("display height: ");
-  Serial.println(tft.height());
-
-
-  if(!wifiManager.autoConnect()) {
-    Serial.println("failed to connect and hit timeout");
-    //reset and try again, or maybe put it to deep sleep
-    ESP.reset();
-    delay(1000);
-  } 
-
-  drawCentreChar("syncing time...", tft.width()/2, tft.height()/2+15);
-  Serial.println("Connected, waiting for timesync...");
-  waitForSync();
-  drawCentreChar("getting weather...", tft.width()/2, tft.height()/2+30);
-
-  Serial.println("UTC:             " + UTC.dateTime());
-  myTZ.setLocation(F("de"));
-  myTZ.setDefault();
-  Serial.print(F("Germany:         "));
-  Serial.println(myTZ.dateTime());
-  nextpoll = now();
-  nextswitch = now()+10;
-
-// Rotary stuff
-    pinMode( A, INPUT_PULLUP );
-    pinMode( B, INPUT_PULLUP );
-
-    attachInterrupt( digitalPinToInterrupt(A), AB_isr, CHANGE );   // pin-change interrupts: 
-    attachInterrupt( digitalPinToInterrupt(B), AB_isr, CHANGE );
-
-
-    state = (digitalRead( A ) << 1) | digitalRead( B );     // Initialise state.
-    old_count = 0;
-}
-
-void loop() {
-
-  //Get new data every 30 minutes
-  if(now() > nextpoll ){
-    nextpoll = now() + 1800;
-    Serial.print("POLL ");
-    Serial.println(now());
-    bool success = getWeatherData();
-    if (success){
-      printData(0);
-    }
-  }
-
-  if( old_count != count ) {
-    if (count>WEATHERDATA_SIZE-1) count = 0;
-    if (count<0) count = WEATHERDATA_SIZE-1;
-    Serial.println( count );
-
-    old_count = count;
-    printData(count);
-  }
-
-  // if (now() >= nextswitch){
-  //   nextswitch = now()+SWITCHINTERVAL;
-  //   if (slot<WEATHERDATA_SIZE-1) slot++;
-  //   else slot=0;
-  //   Serial.print("MARK ");
-  //   Serial.print(slot);
-  //   Serial.print(": ");
-  //   Serial.println(now());
-  //   printData(slot);
-  // }
-}
-
-boolean getWeatherData() //client function to send/receive GET request data.
-{
-
-  HTTPClient http;
-  http.useHTTP10(true);
-  http.begin(client, "http://api.openweathermap.org/data/2.5/forecast?id="+CityID+"&units=metric&cnt=8&APPID="+APIKEY+"&lang=de");
-  http.GET();
-
-  // for testing purposes
-  // char result[]="{\"cod\":\"200\",\"message\":0,\"cnt\":1,\"list\":[{\"dt\":1586034000,\"main\":{\"temp\":37.1,\"feels_like\":2.87,\"temp_min\":7.1,\"temp_max\":7.71,\"pressure\":1025,\"sea_level\":1025,\"grnd_level\":1019,\"humidity\":61,\"temp_kf\":-0.61},\"weather\":[{\"id\":800,\"main\":\"Clear\",\"description\":\"clear sky\",\"icon\":\"01n\"}],\"clouds\":{\"all\":0},\"wind\":{\"speed\":3.23,\"deg\":126},\"sys\":{\"pod\":\"n\"},\"dt_txt\":\"2020-04-04 21:00:00\"}],\"city\":{\"id\":2885397,\"name\":\"Korschenbroich\",\"coord\":{\"lat\":51.1914,\"lon\":6.5135},\"country\":\"DE\",\"timezone\":7200,\"sunrise\":1585976515,\"sunset\":1586023881}}";
-  // DeserializationError error = deserializeJson(root, result);
-
-
-  // Deserialize the JSON document
-  DeserializationError error = deserializeJson(root, http.getStream());
-  // Test if parsing succeeds.
-  if (error) {
-    Serial.print(F("deserializeJson() failed: "));
-    Serial.println(error.c_str());
-    return false;
-  }
-  http.end();
-
-
-  for (int cnt=0;cnt<WEATHERDATA_SIZE; cnt++){
-    theWeatherdata[cnt].temp = root["list"][cnt]["main"]["temp"];
-    theWeatherdata[cnt].weatherID = root["list"][cnt]["weather"][0]["id"];
-
-    generateTimeString(root["list"][cnt]["dt"], theWeatherdata[cnt].time);
-
-    const char* desc;
-    desc = root["list"][cnt]["weather"][0]["description"];
-    char description [30];
-    strcpy(description, desc);
-    utf8_to_latin9 (description, description, 20);
-    strcpy(theWeatherdata[cnt].description, description);
-
-    int winddir = root["list"][cnt]["wind"]["deg"];
-    char winddirchar[3];
-    generateWindDir(winddir, winddirchar);
-    //itoa(winddir,winddirchar,10);
-    int windspeed = root["list"][cnt]["wind"]["speed"]; // m/s in metric
-    char windspeedchar[4];
-    sprintf(windspeedchar,"%.0f",windspeed*3.6);  //convert to km/h
-    strcpy(theWeatherdata[cnt].wind, winddirchar);
-    strcat(theWeatherdata[cnt].wind, "@");
-    strcat(theWeatherdata[cnt].wind, windspeedchar);
-    strcat(theWeatherdata[cnt].wind, "km/h");
-
-    Serial.print("element: ");
-    Serial.println(cnt);
-    Serial.print("Time: ");
-    Serial.println(theWeatherdata[cnt].time);
-    Serial.print("Temp: ");
-    Serial.println(theWeatherdata[cnt].temp);
-    Serial.print("weatherid: ");
-    Serial.println(theWeatherdata[cnt].weatherID);
-    Serial.print("description: ");
-    Serial.println(desc);
-    Serial.print("wind: ");
-    Serial.println(theWeatherdata[cnt].wind);
-    Serial.println("-------------------------------");
-  }
-  return true;
-}
-
 // we can't just use myTZ.hour(dt) because ezTime is broken:
 // https://github.com/ropg/ezTime/issues/10
 // https://github.com/ropg/ezTime/issues/32
@@ -402,41 +239,7 @@ void generateWindDir(int d, char *winddirchar){
   if (337 <= d || d < 22) strcpy(winddirchar, "N");
 }
 
-void printData(int slot)
-{
-  clearScreen();
-  tft.setTextColor(WHITE);
-  tft.setFont(&FreeSansBold11pt8b);
 
-  // drawCentreChar(theWeatherdata[0].time, timeareax+timeareaw/2, timeareay+timeareah/2);
-  drawCentreChar(theWeatherdata[slot].time, timeareax+timeareaw/2, timeareay+timeareah/2);
-  drawTimeBar(slot);
-
-  // printWeatherIcon(theWeatherdata[0].weatherID);
-  printWeatherIcon(theWeatherdata[slot].weatherID);
-
-
-// this only works if this file is encoded in 8859-1
-// if this source file is saved UTF encoded, the compiler will complain 
-// that the array is too small. in UTF8 encoding the degree symbol
-// requires two characters
-  char degC[3] = "°C";
-  char tempstr[6];
-  char all[9] = "";
-  dtostrf(theWeatherdata[slot].temp,2,1, tempstr);
-  strcat(all, tempstr);
-  strcat(all, degC);
-
-  tft.setTextSize(2);
-  drawCentreChar(all, tempareax+tempareaw/2, tempareay+tempareah/2);
-  tft.setTextSize(1);
-  tft.setFont(&FreeSans11pt8b);
-  if (descrarea){
-      //the offset to descrareay might have to be changed based on font size used
-      drawCentreChar(theWeatherdata[slot].description, descrareax+descrareaw/2, descrareay+15);
-      drawCentreChar(theWeatherdata[slot].wind, descrareax+descrareaw/2, descrareay+35);
-  }
-}
 
 void drawCentreChar(const char *buf, int x, int y)
 {
@@ -447,6 +250,7 @@ void drawCentreChar(const char *buf, int x, int y)
     tft.setCursor(x - w / 2, y);
     tft.print(buf);
 }
+
 
 void drawTimeBar(int slot){
   int barh=5;
@@ -459,100 +263,10 @@ void drawTimeBar(int slot){
   }
 }
 
-// see https://openweathermap.org/weather-conditions
-void printWeatherIcon(int id)
-{
- switch(id)
- {
-  case 800: drawClearWeather(); break;
-  case 801: drawFewClouds(); break;
-  case 802: drawFewClouds(); break;
-  case 803: drawCloud(); break;
-  case 804: drawCloud(); break;
-  
-  case 200: drawThunderstorm(); break;
-  case 201: drawThunderstorm(); break;
-  case 202: drawThunderstorm(); break;
-  case 210: drawThunderstorm(); break;
-  case 211: drawThunderstorm(); break;
-  case 212: drawThunderstorm(); break;
-  case 221: drawThunderstorm(); break;
-  case 230: drawThunderstorm(); break;
-  case 231: drawThunderstorm(); break;
-  case 232: drawThunderstorm(); break;
-
-  case 300: drawLightRain(); break;
-  case 301: drawLightRain(); break;
-  case 302: drawLightRain(); break;
-  case 310: drawLightRain(); break;
-  case 311: drawLightRain(); break;
-  case 312: drawLightRain(); break;
-  case 313: drawLightRain(); break;
-  case 314: drawLightRain(); break;
-  case 321: drawLightRain(); break;
-
-  case 500: drawLightRainWithSunOrMoon(); break;
-  case 501: drawLightRainWithSunOrMoon(); break;
-  case 502: drawLightRainWithSunOrMoon(); break;
-  case 503: drawLightRainWithSunOrMoon(); break;
-  case 504: drawLightRainWithSunOrMoon(); break;
-  case 511: drawLightRain(); break;
-  case 520: drawModerateRain(); break;
-  case 521: drawModerateRain(); break;
-  case 522: drawHeavyRain(); break;
-  case 531: drawHeavyRain(); break;
-
-  case 600: drawLightSnowfall(); break;
-  case 601: drawModerateSnowfall(); break;
-  case 602: drawHeavySnowfall(); break;
-  case 611: drawLightSnowfall(); break;
-  case 612: drawLightSnowfall(); break;
-  case 615: drawLightSnowfall(); break;
-  case 616: drawLightSnowfall(); break;
-  case 620: drawLightSnowfall(); break;
-  case 621: drawModerateSnowfall(); break;
-  case 622: drawHeavySnowfall(); break;
-
-  case 701: drawFog(); break;
-  case 711: drawFog(); break;
-  case 721: drawFog(); break;
-  case 731: drawFog(); break;
-  case 741: drawFog(); break;
-  case 751: drawFog(); break;
-  case 761: drawFog(); break;
-  case 762: drawFog(); break;
-  case 771: drawWind(); break;
-  case 781: drawWind(); break;
-
-  default:break; 
- }
-}
 
 void clearScreen()
 {
     tft.fillScreen(BLACK);
-}
-
-void drawClearWeather()
-{
-  if(night)
-  {
-    drawTheMoon();
-  }else
-  {
-    drawTheSun();
-  }
-}
-
-void drawFewClouds()
-{
-  if(night)
-  {
-    drawCloudAndTheMoon();
-  }else
-  {
-    drawCloudWithSun();
-  }
 }
 
 void drawTheSun()
@@ -583,16 +297,6 @@ void drawCloudWithSun()
      tft.drawBitmap(iconareacx,iconareay+4,cloud,bmpw,bmph,GREY);
 }
 
-void drawLightRainWithSunOrMoon()
-{
-  if(night)
-  {
-    drawCloudTheMoonAndRain();
-  }else
-  {
-    drawCloudSunAndRain();
-  }
-}
 
 void drawLightRain()
 {
@@ -709,6 +413,107 @@ void drawFog()
   tft.fillRoundRect(iconareacx+20, iconareay+65, 80, 4, 1, GREY);
 }
 
+void drawLightRainWithSunOrMoon()
+{
+  if(night)
+  {
+    drawCloudTheMoonAndRain();
+  }else
+  {
+    drawCloudSunAndRain();
+  }
+}
+
+void drawClearWeather()
+{
+  if(night)
+  {
+    drawTheMoon();
+  }else
+  {
+    drawTheSun();
+  }
+}
+
+void drawFewClouds()
+{
+  if(night)
+  {
+    drawCloudAndTheMoon();
+  }else
+  {
+    drawCloudWithSun();
+  }
+}
+
+// see https://openweathermap.org/weather-conditions
+void printWeatherIcon(int id)
+{
+ switch(id)
+ {
+  case 800: drawClearWeather(); break;
+  case 801: drawFewClouds(); break;
+  case 802: drawFewClouds(); break;
+  case 803: drawCloud(); break;
+  case 804: drawCloud(); break;
+  
+  case 200: drawThunderstorm(); break;
+  case 201: drawThunderstorm(); break;
+  case 202: drawThunderstorm(); break;
+  case 210: drawThunderstorm(); break;
+  case 211: drawThunderstorm(); break;
+  case 212: drawThunderstorm(); break;
+  case 221: drawThunderstorm(); break;
+  case 230: drawThunderstorm(); break;
+  case 231: drawThunderstorm(); break;
+  case 232: drawThunderstorm(); break;
+
+  case 300: drawLightRain(); break;
+  case 301: drawLightRain(); break;
+  case 302: drawLightRain(); break;
+  case 310: drawLightRain(); break;
+  case 311: drawLightRain(); break;
+  case 312: drawLightRain(); break;
+  case 313: drawLightRain(); break;
+  case 314: drawLightRain(); break;
+  case 321: drawLightRain(); break;
+
+  case 500: drawLightRainWithSunOrMoon(); break;
+  case 501: drawLightRainWithSunOrMoon(); break;
+  case 502: drawLightRainWithSunOrMoon(); break;
+  case 503: drawLightRainWithSunOrMoon(); break;
+  case 504: drawLightRainWithSunOrMoon(); break;
+  case 511: drawLightRain(); break;
+  case 520: drawModerateRain(); break;
+  case 521: drawModerateRain(); break;
+  case 522: drawHeavyRain(); break;
+  case 531: drawHeavyRain(); break;
+
+  case 600: drawLightSnowfall(); break;
+  case 601: drawModerateSnowfall(); break;
+  case 602: drawHeavySnowfall(); break;
+  case 611: drawLightSnowfall(); break;
+  case 612: drawLightSnowfall(); break;
+  case 615: drawLightSnowfall(); break;
+  case 616: drawLightSnowfall(); break;
+  case 620: drawLightSnowfall(); break;
+  case 621: drawModerateSnowfall(); break;
+  case 622: drawHeavySnowfall(); break;
+
+  case 701: drawFog(); break;
+  case 711: drawFog(); break;
+  case 721: drawFog(); break;
+  case 731: drawFog(); break;
+  case 741: drawFog(); break;
+  case 751: drawFog(); break;
+  case 761: drawFog(); break;
+  case 762: drawFog(); break;
+  case 771: drawWind(); break;
+  case 781: drawWind(); break;
+
+  default:break; 
+ }
+}
 void clearIcon()
 {
      tft.fillRect(iconareacx,iconareay,bmpw,bmph,BLACK);
@@ -787,6 +592,94 @@ void drawAll()
     clearIcon();
 }
 
+boolean getWeatherData() //client function to send/receive GET request data.
+{
+
+  HTTPClient http;
+  String url = "http://api.openweathermap.org/data/2.5/forecast?id="+CityID+"&units=metric&cnt=8&APPID="+APIKEY+"&lang=de";
+  Serial.print("Calling URL: ");
+  Serial.println(url);
+  
+  http.useHTTP10(true);
+  http.begin(client, url);
+  http.GET();
+
+  // for testing purposes
+  // char result[]="{\"cod\":\"200\",\"message\":0,\"cnt\":1,\"list\":[{\"dt\":1586034000,\"main\":{\"temp\":37.1,\"feels_like\":2.87,\"temp_min\":7.1,\"temp_max\":7.71,\"pressure\":1025,\"sea_level\":1025,\"grnd_level\":1019,\"humidity\":61,\"temp_kf\":-0.61},\"weather\":[{\"id\":800,\"main\":\"Clear\",\"description\":\"clear sky\",\"icon\":\"01n\"}],\"clouds\":{\"all\":0},\"wind\":{\"speed\":3.23,\"deg\":126},\"sys\":{\"pod\":\"n\"},\"dt_txt\":\"2020-04-04 21:00:00\"}],\"city\":{\"id\":2885397,\"name\":\"Korschenbroich\",\"coord\":{\"lat\":51.1914,\"lon\":6.5135},\"country\":\"DE\",\"timezone\":7200,\"sunrise\":1585976515,\"sunset\":1586023881}}";
+  // DeserializationError error = deserializeJson(root, result);
+
+  // Deserialize the JSON document
+  DeserializationError error = deserializeJson(root, http.getStream());
+
+  // Test if parsing succeeds.
+
+  if (error) {
+    Serial.print(F("deserializeJson() failed: "));
+    Serial.println(error.c_str());
+    return false;
+  }
+  else{
+    int cod = root["cod"];
+    if (cod == 200){
+      Serial.println("URL Call successfull");
+    } else{
+      Serial.print("Response from URL Call: ");
+      Serial.println(root["cod"].as<String>());
+      Serial.print("Message: ");
+      Serial.println(root["message"].as<String>());
+      clearScreen();
+      drawCentreChar("getting weather failed...", tft.width()/2, tft.height()/2+30);
+      drawCentreChar("Valid API Key?", tft.width()/2, tft.height()/2+60);
+      drawAll();
+      ESP.reset();
+    }
+  }
+
+  http.end();
+
+
+
+  for (int cnt=0;cnt<WEATHERDATA_SIZE; cnt++){
+    theWeatherdata[cnt].temp = root["list"][cnt]["main"]["temp"];
+    theWeatherdata[cnt].weatherID = root["list"][cnt]["weather"][0]["id"];
+
+    generateTimeString(root["list"][cnt]["dt"], theWeatherdata[cnt].time);
+
+    const char* desc;
+    desc = root["list"][cnt]["weather"][0]["description"];
+    char description [30];
+    strcpy(description, desc);
+    utf8_to_latin9 (description, description, 20);
+    strcpy(theWeatherdata[cnt].description, description);
+
+    int winddir = root["list"][cnt]["wind"]["deg"];
+    char winddirchar[3];
+    generateWindDir(winddir, winddirchar);
+    //itoa(winddir,winddirchar,10);
+    int windspeed = root["list"][cnt]["wind"]["speed"]; // m/s in metric
+    char windspeedchar[4];
+    sprintf(windspeedchar,"%.0f",windspeed*3.6);  //convert to km/h
+    strcpy(theWeatherdata[cnt].wind, winddirchar);
+    strcat(theWeatherdata[cnt].wind, "@");
+    strcat(theWeatherdata[cnt].wind, windspeedchar);
+    strcat(theWeatherdata[cnt].wind, "km/h");
+
+    Serial.print("element: ");
+    Serial.println(cnt);
+    Serial.print("Time: ");
+    Serial.println(theWeatherdata[cnt].time);
+    Serial.print("Temp: ");
+    Serial.println(theWeatherdata[cnt].temp);
+    Serial.print("weatherid: ");
+    Serial.println(theWeatherdata[cnt].weatherID);
+    Serial.print("description: ");
+    Serial.println(desc);
+    Serial.print("wind: ");
+    Serial.println(theWeatherdata[cnt].wind);
+    Serial.println("-------------------------------");
+  }
+  return true;
+}
 
 /* UTF-8 to ISO-8859-1/ISO-8859-15 mapper.
  * Return 0..255 for valid ISO-8859-15 code points, 256 otherwise.
@@ -939,3 +832,143 @@ void configModeCallback (WiFiManager *myWiFiManager) {
   Serial.println(myWiFiManager->getConfigPortalSSID());
 }
 
+void printData(int slot)
+{
+  clearScreen();
+  tft.setTextColor(WHITE);
+  tft.setFont(&FreeSansBold11pt8b);
+
+  // drawCentreChar(theWeatherdata[0].time, timeareax+timeareaw/2, timeareay+timeareah/2);
+  drawCentreChar(theWeatherdata[slot].time, timeareax+timeareaw/2, timeareay+timeareah/2);
+  drawTimeBar(slot);
+
+  // printWeatherIcon(theWeatherdata[0].weatherID);
+  printWeatherIcon(theWeatherdata[slot].weatherID);
+
+
+// this only works if this file is encoded in 8859-1
+// if this source file is saved UTF encoded, the compiler will complain 
+// that the array is too small. in UTF8 encoding the degree symbol
+// requires two characters
+  char degC[3] = {0xB0, 'C', '\0'};
+  char tempstr[6];
+  char all[9] = "";
+  dtostrf(theWeatherdata[slot].temp,2,1, tempstr);
+  strcat(all, tempstr);
+  strcat(all, degC);
+
+  tft.setTextSize(2);
+  drawCentreChar(all, tempareax+tempareaw/2, tempareay+tempareah/2);
+  tft.setTextSize(1);
+  tft.setFont(&FreeSans11pt8b);
+  if (descrarea){
+      //the offset to descrareay might have to be changed based on font size used
+      drawCentreChar(theWeatherdata[slot].description, descrareax+descrareaw/2, descrareay+15);
+      drawCentreChar(theWeatherdata[slot].wind, descrareax+descrareaw/2, descrareay+35);
+  }
+}
+
+
+
+void setup() {
+  Serial.begin(115200);
+
+  // Init ST7735 80x160
+  // tft.initR(INITR_GREENTAB);
+  // tft.setRotation(ST7735_MADCTL_BGR);
+  // tft.invertDisplay(true);
+
+  // Init ST7789 240x240
+  tft.init(240, 240, SPI_MODE2);
+  tft.invertDisplay(true);
+  tft.fillScreen(BLACK);
+
+
+  WiFiManager wifiManager;
+  //reset settings - for testing
+  //wifiManager.resetSettings();
+  //set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
+  wifiManager.setAPCallback(configModeCallback);
+
+  tft.setFont(&FreeSans11pt8b);
+  tft.setTextColor(WHITE);
+  tft.setTextSize(1);
+  drawCentreChar("Connecting...", tft.width()/2, tft.height()/2);
+  
+  Serial.println("Connecting");
+  Serial.print("display width: ");
+  Serial.println(tft.width());
+  Serial.print("display height: ");
+  Serial.println(tft.height());
+
+
+  if(!wifiManager.autoConnect()) {
+    Serial.println("failed to connect and hit timeout");
+    //reset and try again, or maybe put it to deep sleep
+    ESP.reset();
+    delay(1000);
+  } 
+
+  clearScreen();
+  // we should have a ping check whether pool.ntp.org is available. If not, we should disconnect from the wifi and go back into AP Mode
+//  WiFi.disconnect();
+
+  drawCentreChar("syncing time...", tft.width()/2, tft.height()/2+15);
+  Serial.println("Connected, waiting for timesync...");
+  waitForSync();
+  drawCentreChar("getting weather...", tft.width()/2, tft.height()/2+30);
+
+  Serial.println("UTC:             " + UTC.dateTime());
+  myTZ.setLocation(F("de"));
+  myTZ.setDefault();
+  Serial.print(F("Germany:         "));
+  Serial.println(myTZ.dateTime());
+  nextpoll = now();
+  nextswitch = now()+10;
+
+// Rotary stuff
+    pinMode( A, INPUT_PULLUP );
+    pinMode( B, INPUT_PULLUP );
+
+    attachInterrupt( digitalPinToInterrupt(A), AB_isr, CHANGE );   // pin-change interrupts: 
+    attachInterrupt( digitalPinToInterrupt(B), AB_isr, CHANGE );
+
+
+    state = (digitalRead( A ) << 1) | digitalRead( B );     // Initialise state.
+    old_count = 0;
+}
+
+
+void loop() {
+
+  //Get new data every 30 minutes
+  if(now() > nextpoll ){
+    nextpoll = now() + 1800;
+    Serial.print("POLL ");
+    Serial.println(now());
+    bool success = getWeatherData();
+    if (success){
+      printData(0);
+    }
+  }
+
+  if( old_count != count ) {
+    if (count>WEATHERDATA_SIZE-1) count = 0;
+    if (count<0) count = WEATHERDATA_SIZE-1;
+    Serial.println( count );
+
+    old_count = count;
+    printData(count);
+  }
+
+  // if (now() >= nextswitch){
+  //   nextswitch = now()+SWITCHINTERVAL;
+  //   if (slot<WEATHERDATA_SIZE-1) slot++;
+  //   else slot=0;
+  //   Serial.print("MARK ");
+  //   Serial.print(slot);
+  //   Serial.print(": ");
+  //   Serial.println(now());
+  //   printData(slot);
+  // }
+}
