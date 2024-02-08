@@ -54,8 +54,7 @@ long nextpoll;
 long nextswitch;
 
 
-String APIKEY = "fb1d7728528b56504cb6af0aba6c6fbc"; // change to your API Key
-//String APIKEY = "APIKEY"; // change to your API Key
+String APIKEY = "APIKEY"; // change to your API Key
 String CityID = "2885397";                          //change to place of choice
 
 Timezone myTZ;
